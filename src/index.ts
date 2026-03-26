@@ -1,3 +1,4 @@
+export * from "./logic-analyzer/capture-contracts.js";
 export * from "./logic-analyzer/contracts.js";
 export * from "./logic-analyzer/logic-analyzer-skill.js";
 export * from "./resource-manager/contracts.js";
