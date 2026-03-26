@@ -102,8 +102,16 @@ describe("resource manager contract", () => {
 describe("in-memory resource manager", () => {
   const connectedAt = "2026-03-25T12:00:00.000Z";
   const allocateAt = "2026-03-25T12:01:00.000Z";
+  const conflictAt = "2026-03-25T12:01:30.000Z";
   const disconnectAt = "2026-03-25T12:02:00.000Z";
   const releaseAt = "2026-03-25T12:03:00.000Z";
+
+  const baseDevice = {
+    deviceId: "logic-1",
+    label: "USB Logic Analyzer",
+    capabilityType: "logic-analyzer",
+    lastSeenAt: connectedAt
+  } as const;
 
   const createClock = (...timestamps: string[]) => {
     let index = 0;
@@ -112,14 +120,7 @@ describe("in-memory resource manager", () => {
   };
 
   it("refreshes discovered devices into visible inventory records", async () => {
-    const provider = new FakeDeviceProvider([
-      {
-        deviceId: "logic-1",
-        label: "USB Logic Analyzer",
-        capabilityType: "logic-analyzer",
-        lastSeenAt: connectedAt
-      }
-    ]);
+    const provider = new FakeDeviceProvider([baseDevice]);
     const manager = createResourceManager(provider, {
       now: createClock(connectedAt)
     });
@@ -141,28 +142,21 @@ describe("in-memory resource manager", () => {
     expect(manager.listDevices()).toEqual(records);
   });
 
-  it("enforces device-level exclusive allocation per owner", async () => {
-    const provider = new FakeDeviceProvider([
-      {
-        deviceId: "logic-1",
-        label: "USB Logic Analyzer",
-        capabilityType: "logic-analyzer",
-        lastSeenAt: connectedAt
-      }
-    ]);
+  it("transitions a connected device from free to allocated to free", async () => {
+    const provider = new FakeDeviceProvider([baseDevice]);
     const manager = createResourceManager(provider, {
       now: createClock(connectedAt)
     });
 
     await manager.refreshInventory();
 
-    const firstAllocation = manager.allocateDevice({
+    const allocation = manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       requestedAt: allocateAt
     });
 
-    expect(firstAllocation).toEqual({
+    expect(allocation).toEqual({
       ok: true,
       device: {
         deviceId: "logic-1",
@@ -176,12 +170,59 @@ describe("in-memory resource manager", () => {
       }
     });
 
+    const release = manager.releaseDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      releasedAt: releaseAt
+    });
+
+    expect(release).toEqual({
+      ok: true,
+      device: {
+        deviceId: "logic-1",
+        label: "USB Logic Analyzer",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: connectedAt,
+        updatedAt: releaseAt
+      }
+    });
+    expect(manager.listDevices()).toEqual([
+      {
+        deviceId: "logic-1",
+        label: "USB Logic Analyzer",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: connectedAt,
+        updatedAt: releaseAt
+      }
+    ]);
+  });
+
+  it("rejects conflicting allocation requests with the owning state still visible", async () => {
+    const provider = new FakeDeviceProvider([baseDevice]);
+    const manager = createResourceManager(provider, {
+      now: createClock(connectedAt)
+    });
+
+    await manager.refreshInventory();
+
+    const firstAllocation = manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocateAt
+    });
     const conflictingAllocation = manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-beta",
-      requestedAt: disconnectAt
+      requestedAt: conflictAt
     });
 
+    expect(firstAllocation.ok).toBe(true);
     expect(conflictingAllocation).toMatchObject({
       ok: false,
       reason: "device-already-allocated",
@@ -191,9 +232,69 @@ describe("in-memory resource manager", () => {
     expect(conflictingAllocation.ok).toBe(false);
     if (!conflictingAllocation.ok) {
       expect(conflictingAllocation.message).toContain("skill-alpha");
-      expect(conflictingAllocation.device).toMatchObject({
+      expect(conflictingAllocation.device).toEqual({
+        deviceId: "logic-1",
+        label: "USB Logic Analyzer",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
         allocationState: "allocated",
-        ownerSkillId: "skill-alpha"
+        ownerSkillId: "skill-alpha",
+        lastSeenAt: connectedAt,
+        updatedAt: allocateAt
+      });
+    }
+
+    expect(manager.listDevices()).toEqual([
+      {
+        deviceId: "logic-1",
+        label: "USB Logic Analyzer",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "allocated",
+        ownerSkillId: "skill-alpha",
+        lastSeenAt: connectedAt,
+        updatedAt: allocateAt
+      }
+    ]);
+  });
+
+  it("rejects wrong-owner release attempts without hiding the current allocation", async () => {
+    const provider = new FakeDeviceProvider([baseDevice]);
+    const manager = createResourceManager(provider, {
+      now: createClock(connectedAt)
+    });
+
+    await manager.refreshInventory();
+    manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocateAt
+    });
+
+    const releaseResult = manager.releaseDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-beta",
+      releasedAt: releaseAt
+    });
+
+    expect(releaseResult).toMatchObject({
+      ok: false,
+      reason: "owner-mismatch",
+      deviceId: "logic-1",
+      ownerSkillId: "skill-beta"
+    });
+    expect(releaseResult.ok).toBe(false);
+    if (!releaseResult.ok) {
+      expect(releaseResult.message).toContain("skill-alpha");
+      expect(releaseResult.device).toEqual({
+        deviceId: "logic-1",
+        label: "USB Logic Analyzer",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "allocated",
+        ownerSkillId: "skill-alpha",
+        lastSeenAt: connectedAt,
+        updatedAt: allocateAt
       });
     }
 
@@ -212,14 +313,7 @@ describe("in-memory resource manager", () => {
   });
 
   it("keeps allocated missing devices visible as disconnected until release", async () => {
-    const provider = new FakeDeviceProvider([
-      {
-        deviceId: "logic-1",
-        label: "USB Logic Analyzer",
-        capabilityType: "logic-analyzer",
-        lastSeenAt: connectedAt
-      }
-    ]);
+    const provider = new FakeDeviceProvider([baseDevice]);
     const manager = createResourceManager(provider, {
       now: createClock(connectedAt, disconnectAt)
     });
@@ -267,60 +361,5 @@ describe("in-memory resource manager", () => {
       }
     });
     expect(manager.listDevices()).toEqual([]);
-  });
-
-  it("rejects wrong-owner release attempts without hiding state", async () => {
-    const provider = new FakeDeviceProvider([
-      {
-        deviceId: "logic-1",
-        label: "USB Logic Analyzer",
-        capabilityType: "logic-analyzer",
-        lastSeenAt: connectedAt
-      }
-    ]);
-    const manager = createResourceManager(provider, {
-      now: createClock(connectedAt)
-    });
-
-    await manager.refreshInventory();
-    manager.allocateDevice({
-      deviceId: "logic-1",
-      ownerSkillId: "skill-alpha",
-      requestedAt: allocateAt
-    });
-
-    const releaseResult = manager.releaseDevice({
-      deviceId: "logic-1",
-      ownerSkillId: "skill-beta",
-      releasedAt: releaseAt
-    });
-
-    expect(releaseResult).toMatchObject({
-      ok: false,
-      reason: "owner-mismatch",
-      deviceId: "logic-1",
-      ownerSkillId: "skill-beta"
-    });
-    expect(releaseResult.ok).toBe(false);
-    if (!releaseResult.ok) {
-      expect(releaseResult.message).toContain("skill-alpha");
-      expect(releaseResult.device).toMatchObject({
-        allocationState: "allocated",
-        ownerSkillId: "skill-alpha"
-      });
-    }
-
-    expect(manager.listDevices()).toEqual([
-      {
-        deviceId: "logic-1",
-        label: "USB Logic Analyzer",
-        capabilityType: "logic-analyzer",
-        connectionState: "connected",
-        allocationState: "allocated",
-        ownerSkillId: "skill-alpha",
-        lastSeenAt: connectedAt,
-        updatedAt: allocateAt
-      }
-    ]);
   });
 });
