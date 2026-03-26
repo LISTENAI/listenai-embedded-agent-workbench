@@ -1,4 +1,3 @@
-export * from "./logic-analyzer/capture-contracts.js";
 export * from "./logic-analyzer/contracts.js";
 export * from "./logic-analyzer/capture-contracts.js";
 export * from "./logic-analyzer/analysis-contracts.js";
