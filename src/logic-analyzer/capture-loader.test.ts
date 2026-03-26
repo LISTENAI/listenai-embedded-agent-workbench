@@ -1,23 +1,31 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
-  CAPTURE_CONTENT_KINDS,
+  CAPTURE_COMPATIBILITY_ISSUE_CODES,
   CAPTURE_LOAD_FAILURE_REASONS,
-  SESSION_CAPTURE_COMPATIBILITY_CODES,
-  type CaptureAdapter,
+  DEFAULT_CAPTURE_ADAPTERS,
+  analyzeWaveformCapture,
+  createCaptureLoader,
+  loadLogicCapture,
   type CaptureArtifactInput,
-  type CaptureLoadResult,
-  type CaptureLoadSuccess,
-  type CaptureSessionCompatibilityIssue,
+  type LoadCaptureResult,
   type LogicAnalyzerSessionRecord,
-  type NormalizedLogicCapture
+  type LogicCapture
 } from "../index.js";
 
-const session: LogicAnalyzerSessionRecord = {
+const fixtureCsvText = [
+  "Time [us],D0,D1",
+  "0,0,1",
+  "1,1,1",
+  "2,1,0",
+  "3,0,0"
+].join("\n");
+
+const baseSession: LogicAnalyzerSessionRecord = {
   sessionId: "session-001",
   deviceId: "logic-1",
   ownerSkillId: "logic-analyzer",
-  startedAt: "2026-03-26T00:01:00.000Z",
+  startedAt: "2026-03-26T00:00:00.000Z",
   device: {
     deviceId: "logic-1",
     label: "USB Logic Analyzer",
@@ -26,108 +34,47 @@ const session: LogicAnalyzerSessionRecord = {
     allocationState: "allocated",
     ownerSkillId: "logic-analyzer",
     lastSeenAt: "2026-03-26T00:00:00.000Z",
-    updatedAt: "2026-03-26T00:01:00.000Z"
+    updatedAt: "2026-03-26T00:00:00.000Z"
   },
   sampling: {
-    sampleRateHz: 24_000_000,
-    captureDurationMs: 25,
+    sampleRateHz: 1_000_000,
+    captureDurationMs: 0.004,
     channels: [
       { channelId: "D0", label: "CLK" },
-      { channelId: "D1", label: "MOSI" }
+      { channelId: "D1", label: "DATA" }
     ]
   },
   analysis: {
     focusChannelIds: ["D0", "D1"],
-    edgePolicy: "rising",
+    edgePolicy: "all",
     includePulseWidths: true,
-    timeReference: "first-transition"
+    timeReference: "capture-start"
   }
 };
 
-const sigrokCsvArtifact: CaptureArtifactInput = {
-  contentKind: "text",
-  sourceName: "pulseview-export.csv",
-  formatHint: "sigrok-csv",
-  mediaType: "text/csv",
-  capturedAt: "2026-03-26T00:01:30.000Z",
-  text: [
-    "Time[s],D0,D1",
-    "0.000000000,0,1",
-    "0.000000042,1,1",
-    "0.000000084,1,0"
-  ].join("\n")
+const validCsvArtifact: CaptureArtifactInput = {
+  sourceName: "capture.csv",
+  capturedAt: "2026-03-26T00:00:01.000Z",
+  text: fixtureCsvText
 };
 
-const normalizedCapture: NormalizedLogicCapture = {
-  sampleRateHz: 24_000_000,
-  totalSamples: 600_000,
-  durationNs: 25_000_000,
-  channels: [
-    {
-      channelId: "D0",
-      label: "CLK",
-      initialLevel: 0,
-      transitions: [
-        {
-          sampleIndex: 1,
-          timestampNs: 42,
-          level: 1
-        }
-      ]
-    },
-    {
-      channelId: "D1",
-      label: "MOSI",
-      initialLevel: 1,
-      transitions: [
-        {
-          sampleIndex: 2,
-          timestampNs: 84,
-          level: 0
-        }
-      ]
-    }
-  ],
-  metadata: {
-    sourceName: "pulseview-export.csv",
-    formatHint: "sigrok-csv",
-    mediaType: "text/csv",
-    capturedAt: "2026-03-26T00:01:30.000Z",
-    adapterId: "sigrok-csv"
-  }
-};
-
-describe("capture ingest contract", () => {
-  it("exposes a host-neutral artifact shape and typed load result union", async () => {
-    expect(CAPTURE_CONTENT_KINDS).toEqual(["text", "bytes"]);
+describe("capture loader contract", () => {
+  it("exposes explicit offline capture result and compatibility types", () => {
     expect(CAPTURE_LOAD_FAILURE_REASONS).toEqual([
       "unsupported-adapter",
       "unreadable-input",
-      "incompatible-session-capture"
+      "incompatible-session"
     ]);
-    expect(SESSION_CAPTURE_COMPATIBILITY_CODES).toEqual([
-      "missing-session-channel",
-      "missing-capture-channel",
+    expect(CAPTURE_COMPATIBILITY_ISSUE_CODES).toEqual([
+      "missing-channel",
       "sample-rate-mismatch",
-      "capture-duration-exceeds-session"
+      "duration-mismatch"
     ]);
 
-    expectTypeOf<CaptureArtifactInput>().toMatchTypeOf<
-      | {
-          contentKind: "text";
-          text: string;
-          sourceName?: string;
-          formatHint?: string;
-        }
-      | {
-          contentKind: "bytes";
-          bytes: Uint8Array;
-          mediaType?: string;
-        }
-    >();
-
-    expectTypeOf<NormalizedLogicCapture>().toMatchTypeOf<{
+    expectTypeOf<LogicCapture>().toMatchTypeOf<{
+      adapterId: string;
       sampleRateHz: number;
+      samplePeriodNs: number;
       totalSamples: number;
       durationNs: number;
       channels: readonly {
@@ -135,188 +82,344 @@ describe("capture ingest contract", () => {
         initialLevel: 0 | 1;
         transitions: readonly {
           sampleIndex: number;
-          timestampNs: number;
-          level: 0 | 1;
+          timeNs: number;
+          fromLevel: 0 | 1;
+          toLevel: 0 | 1;
         }[];
       }[];
-      metadata: {
-        adapterId: string;
-      };
     }>();
 
-    expectTypeOf<CaptureLoadResult>().toMatchTypeOf<
-      | { ok: true; adapterId: string; capture: NormalizedLogicCapture }
-      | {
-          ok: false;
-          reason: "unsupported-adapter";
-          attemptedAdapterIds: readonly string[];
-        }
-      | {
-          ok: false;
-          reason: "unreadable-input";
-          adapterId: string | null;
-          detail: string;
-        }
-      | {
-          ok: false;
-          reason: "incompatible-session-capture";
-          issues: readonly CaptureSessionCompatibilityIssue[];
-        }
+    expectTypeOf<LoadCaptureResult>().toMatchTypeOf<
+      | { ok: true; adapterId: string; selectedBy: "format-hint" | "probe"; capture: LogicCapture }
+      | { ok: false; reason: "unsupported-adapter"; adapterIds: readonly string[] }
+      | { ok: false; reason: "unreadable-input"; adapterId: string; details: readonly string[] }
+      | { ok: false; reason: "incompatible-session"; adapterId: string; issues: readonly unknown[] }
     >();
 
-    const adapter: CaptureAdapter = {
-      adapterId: "sigrok-csv",
-      displayName: "sigrok CSV export",
-      matches(input) {
-        return input.formatHint === "sigrok-csv"
-          ? { confidence: "exact", reason: "format hint matches sigrok CSV" }
-          : null;
-      },
-      async load(input, context) {
-        expect(input).toEqual(sigrokCsvArtifact);
-        expect(context.session).toEqual(session);
+    expect(DEFAULT_CAPTURE_ADAPTERS.map((adapter) => adapter.id)).toEqual([
+      "sigrok-csv"
+    ]);
+  });
 
-        return {
-          ok: true,
-          adapterId: "sigrok-csv",
-          artifact: {
-            sourceName: input.sourceName,
-            formatHint: input.formatHint,
-            mediaType: input.mediaType,
-            capturedAt: input.capturedAt
-          },
-          capture: normalizedCapture
-        } satisfies CaptureLoadSuccess;
-      }
-    };
-
-    expect(adapter.matches(sigrokCsvArtifact)).toEqual({
-      confidence: "exact",
-      reason: "format hint matches sigrok CSV"
+  it("normalizes a sigrok-compatible CSV artifact through probe-based adapter selection", () => {
+    const result = loadLogicCapture({
+      session: baseSession,
+      artifact: validCsvArtifact
     });
-    await expect(
-      adapter.load(sigrokCsvArtifact, {
-        session
-      })
-    ).resolves.toEqual({
+
+    expect(result).toMatchObject({
       ok: true,
       adapterId: "sigrok-csv",
-      artifact: {
-        sourceName: "pulseview-export.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv",
-        capturedAt: "2026-03-26T00:01:30.000Z"
-      },
-      capture: normalizedCapture
+      selectedBy: "probe"
     });
-  });
-
-  it("keeps unsupported inputs inspectable without collapsing into parser failures", () => {
-    const result: CaptureLoadResult = {
-      ok: false,
-      reason: "unsupported-adapter",
-      artifact: {
-        sourceName: "mystery.bin",
-        formatHint: "vendor-blob",
-        mediaType: "application/octet-stream"
-      },
-      attemptedAdapterIds: ["sigrok-csv"],
-      message: "No registered adapter accepted formatHint vendor-blob."
-    };
-
-    expect(result).toEqual({
-      ok: false,
-      reason: "unsupported-adapter",
-      artifact: {
-        sourceName: "mystery.bin",
-        formatHint: "vendor-blob",
-        mediaType: "application/octet-stream"
-      },
-      attemptedAdapterIds: ["sigrok-csv"],
-      message: "No registered adapter accepted formatHint vendor-blob."
-    });
-  });
-
-  it("surfaces unreadable sigrok-compatible content with adapter and artifact detail", () => {
-    const result: CaptureLoadResult = {
-      ok: false,
-      reason: "unreadable-input",
-      adapterId: "sigrok-csv",
-      artifact: {
-        sourceName: "pulseview-export.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv"
-      },
-      detail: "Expected CSV header columns Time[s],D0,D1 but found Time[s],A0,A1.",
-      message: "sigrok CSV artifact could not be normalized."
-    };
-
-    expect(result).toEqual({
-      ok: false,
-      reason: "unreadable-input",
-      adapterId: "sigrok-csv",
-      artifact: {
-        sourceName: "pulseview-export.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv"
-      },
-      detail: "Expected CSV header columns Time[s],D0,D1 but found Time[s],A0,A1.",
-      message: "sigrok CSV artifact could not be normalized."
-    });
-  });
-
-  it("reports session and capture compatibility mismatches against the session contract", () => {
-    const result: CaptureLoadResult = {
-      ok: false,
-      reason: "incompatible-session-capture",
-      adapterId: "sigrok-csv",
-      artifact: {
-        sourceName: "pulseview-export.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv"
-      },
-      issues: [
-        {
-          code: "missing-session-channel",
-          message: "Capture does not include requested session channel D1.",
-          sessionChannelId: "D1"
-        },
-        {
-          code: "sample-rate-mismatch",
-          message: "Capture sample rate does not match the session sampling request.",
-          expected: session.sampling.sampleRateHz,
-          actual: 12_000_000
-        },
-        {
-          code: "capture-duration-exceeds-session",
-          message: "Capture duration exceeds the requested session window.",
-          expected: session.sampling.captureDurationMs,
-          actual: 30
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.capture).toEqual({
+        adapterId: "sigrok-csv",
+        sourceName: "capture.csv",
+        capturedAt: "2026-03-26T00:00:01.000Z",
+        sampleRateHz: 1_000_000,
+        samplePeriodNs: 1000,
+        totalSamples: 4,
+        durationNs: 4000,
+        channels: [
+          {
+            channelId: "D0",
+            initialLevel: 0,
+            transitions: [
+              { sampleIndex: 1, timeNs: 1000, fromLevel: 0, toLevel: 1 },
+              { sampleIndex: 3, timeNs: 3000, fromLevel: 1, toLevel: 0 }
+            ]
+          },
+          {
+            channelId: "D1",
+            initialLevel: 1,
+            transitions: [
+              { sampleIndex: 2, timeNs: 2000, fromLevel: 1, toLevel: 0 }
+            ]
+          }
+        ],
+        artifact: {
+          sourceName: "capture.csv",
+          formatHint: null,
+          mediaType: null,
+          capturedAt: "2026-03-26T00:00:01.000Z",
+          byteLength: null,
+          hasText: true
         }
-      ],
-      message: "Capture metadata is incompatible with the active logic analyzer session."
-    };
+      });
+    }
+  });
 
+  it("returns a typed unsupported-adapter failure when no adapter matches the requested format hint", () => {
+    const result = loadLogicCapture({
+      session: baseSession,
+      artifact: {
+        sourceName: "capture.saleae",
+        formatHint: "saleae-json",
+        text: "{}"
+      }
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "unsupported-adapter",
+      adapterIds: ["sigrok-csv"],
+      artifact: {
+        sourceName: "capture.saleae",
+        formatHint: "saleae-json",
+        mediaType: null,
+        capturedAt: null,
+        byteLength: null,
+        hasText: true
+      },
+      message: "No capture adapter matches format hint saleae-json."
+    });
+  });
+
+  it("returns a typed unreadable-input failure for malformed sigrok-compatible CSV content", () => {
+    const loader = createCaptureLoader();
+
+    const result = loader({
+      session: baseSession,
+      artifact: {
+        sourceName: "broken.csv",
+        formatHint: "sigrok-csv",
+        text: [
+          "Time [us],D0,D1",
+          "0,0,1",
+          "1,1,1",
+          "3,1,0"
+        ].join("\n")
+      }
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "unreadable-input",
+      adapterId: "sigrok-csv",
+      selectedBy: "format-hint"
+    });
     expect(result.ok).toBe(false);
-    if (!result.ok && result.reason === "incompatible-session-capture") {
-      expect(result.issues).toEqual([
-        {
-          code: "missing-session-channel",
-          message: "Capture does not include requested session channel D1.",
-          sessionChannelId: "D1"
-        },
-        {
-          code: "sample-rate-mismatch",
-          message: "Capture sample rate does not match the session sampling request.",
-          expected: 24_000_000,
-          actual: 12_000_000
-        },
-        {
-          code: "capture-duration-exceeds-session",
-          message: "Capture duration exceeds the requested session window.",
-          expected: 25,
-          actual: 30
+    if (!result.ok && result.reason === "unreadable-input") {
+      expect(result.message).toBe("CSV sample timing must use a stable period.");
+      expect(result.details).toEqual([
+        "Rows 2 and 3 differ by 2000ns instead of 1000ns."
+      ]);
+    }
+  });
+
+  it("hands a loaded sigrok-compatible capture into the waveform analyzer through the root barrel", () => {
+    const result = loadLogicCapture({
+      session: baseSession,
+      artifact: {
+        ...validCsvArtifact,
+        formatHint: "sigrok-csv"
+      }
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      adapterId: "sigrok-csv",
+      selectedBy: "format-hint"
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const analysis = analyzeWaveformCapture(result.capture, baseSession.analysis);
+
+      expect(analysis.captureSource).toEqual({
+        adapterId: "sigrok-csv",
+        sourceName: "capture.csv",
+        capturedAt: "2026-03-26T00:00:01.000Z"
+      });
+      expect(analysis.timing).toEqual({
+        sampleRateHz: 1_000_000,
+        samplePeriodNs: 1000,
+        totalSamples: 4,
+        captureDurationNs: 4000,
+        timeReference: "capture-start",
+        referenceOffsetNs: 0,
+        analyzedWindow: {
+          startSampleIndex: 0,
+          endSampleIndex: 3,
+          sampleCount: 4,
+          durationNs: 4000,
+          clippedToCapture: false
         }
+      });
+      expect(analysis.analyzedChannelIds).toEqual(["D0", "D1"]);
+      expect(analysis.channels).toEqual([
+        {
+          channelId: "D0",
+          initialLevel: 0,
+          finalLevel: 0,
+          qualifyingEdgePolicy: "all",
+          observedEdgeKinds: ["rising", "falling"],
+          totalTransitionCount: 2,
+          qualifyingTransitionCount: 2,
+          firstQualifyingTransitionTimeNs: 1000,
+          lastQualifyingTransitionTimeNs: 3000,
+          pulseWidths: [
+            {
+              polarity: "high",
+              count: 1,
+              minWidthNs: 2000,
+              maxWidthNs: 2000,
+              averageWidthNs: 2000
+            },
+            {
+              polarity: "low",
+              count: 2,
+              minWidthNs: 1000,
+              maxWidthNs: 1000,
+              averageWidthNs: 1000
+            }
+          ],
+          rhythm: {
+            edgeKind: "rising",
+            intervalCount: 1,
+            minIntervalNs: 2000,
+            maxIntervalNs: 2000,
+            averageIntervalNs: 2000,
+            approximateFrequencyHz: 500000,
+            isSteady: true
+          },
+          anomalies: [],
+          notes: [],
+          summaryText:
+            "2 rising/falling edges observed, rhythm is steady at about 500000Hz, high widths avg 2000ns, low widths avg 1000ns."
+        },
+        {
+          channelId: "D1",
+          initialLevel: 1,
+          finalLevel: 0,
+          qualifyingEdgePolicy: "all",
+          observedEdgeKinds: ["falling"],
+          totalTransitionCount: 1,
+          qualifyingTransitionCount: 1,
+          firstQualifyingTransitionTimeNs: 2000,
+          lastQualifyingTransitionTimeNs: 2000,
+          pulseWidths: [
+            {
+              polarity: "high",
+              count: 1,
+              minWidthNs: 2000,
+              maxWidthNs: 2000,
+              averageWidthNs: 2000
+            },
+            {
+              polarity: "low",
+              count: 1,
+              minWidthNs: 2000,
+              maxWidthNs: 2000,
+              averageWidthNs: 2000
+            }
+          ],
+          rhythm: null,
+          anomalies: [
+            {
+              code: "insufficient-transitions",
+              severity: "warning",
+              channelId: "D1",
+              message: "Need at least two qualifying edges to estimate rhythm.",
+              details: {
+                qualifyingTransitionCount: 1
+              }
+            }
+          ],
+          notes: [
+            {
+              code: "insufficient-transition-data",
+              channelId: "D1",
+              message: "Need at least two qualifying transitions for rhythm analysis.",
+              details: {
+                qualifyingTransitionCount: 1
+              }
+            }
+          ],
+          summaryText:
+            "1 falling edge observed, insufficient data for rhythm, high widths avg 2000ns, low widths avg 2000ns."
+        }
+      ]);
+      expect(analysis.capabilityNotes).toEqual([
+        {
+          code: "focus-channels-applied",
+          message: "Analysis is limited to the requested focus channels.",
+          details: {
+            requestedChannelCount: 2,
+            analyzedChannelCount: 2
+          }
+        },
+        {
+          code: "baseline-only-no-protocol-decoding",
+          message: "Structured output only covers baseline waveform interpretation."
+        }
+      ]);
+      expect(analysis.anomalies).toEqual([
+        {
+          code: "insufficient-transitions",
+          severity: "warning",
+          channelId: "D1",
+          message: "Need at least two qualifying edges to estimate rhythm.",
+          details: {
+            qualifyingTransitionCount: 1
+          }
+        }
+      ]);
+      expect(analysis.summaryText).toBe(
+        "D0 2 rising/falling edges observed, rhythm is steady at about 500000hz, high widths avg 2000ns, low widths avg 1000ns. D1 1 falling edge observed, insufficient data for rhythm, high widths avg 2000ns, low widths avg 2000ns.; some channels have insufficient data for rhythm, no protocol decoding is attempted"
+      );
+    }
+  });
+
+  it("returns explicit session/capture compatibility issues when capture facts contradict the session", () => {
+    const result = loadLogicCapture({
+      session: {
+        ...baseSession,
+        sampling: {
+          sampleRateHz: 2_000_000,
+          captureDurationMs: 0.004,
+          channels: [
+            { channelId: "D0", label: "CLK" },
+            { channelId: "D2", label: "CS" }
+          ]
+        },
+        analysis: {
+          ...baseSession.analysis,
+          focusChannelIds: ["D0", "D2"]
+        }
+      },
+      artifact: validCsvArtifact
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "incompatible-session",
+      adapterId: "sigrok-csv",
+      selectedBy: "probe"
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.reason === "incompatible-session") {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          {
+            code: "missing-channel",
+            channelId: "D2",
+            expected: "present",
+            actual: "missing",
+            message: "Capture is missing requested channel D2."
+          },
+          {
+            code: "sample-rate-mismatch",
+            expected: 2_000_000,
+            actual: 1_000_000,
+            message: "Capture sample rate 1000000Hz does not match requested 2000000Hz."
+          }
+        ])
+      );
+      expect(result.capture.channels.map((channel) => channel.channelId)).toEqual([
+        "D0",
+        "D1"
       ]);
     }
   });

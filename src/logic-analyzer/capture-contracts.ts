@@ -1,138 +1,167 @@
 import type { LogicAnalyzerSessionRecord } from "./contracts.js";
 
-export const CAPTURE_CONTENT_KINDS = ["text", "bytes"] as const;
-export type CaptureContentKind = (typeof CAPTURE_CONTENT_KINDS)[number];
-
 export const CAPTURE_LOAD_FAILURE_REASONS = [
   "unsupported-adapter",
   "unreadable-input",
-  "incompatible-session-capture"
+  "incompatible-session"
 ] as const;
 export type CaptureLoadFailureReason =
   (typeof CAPTURE_LOAD_FAILURE_REASONS)[number];
 
-export const SESSION_CAPTURE_COMPATIBILITY_CODES = [
-  "missing-session-channel",
-  "missing-capture-channel",
+export const CAPTURE_COMPATIBILITY_ISSUE_CODES = [
+  "missing-channel",
   "sample-rate-mismatch",
-  "capture-duration-exceeds-session"
+  "duration-mismatch"
 ] as const;
-export type SessionCaptureCompatibilityCode =
-  (typeof SESSION_CAPTURE_COMPATIBILITY_CODES)[number];
+export type CaptureCompatibilityIssueCode =
+  (typeof CAPTURE_COMPATIBILITY_ISSUE_CODES)[number];
 
-export interface CaptureArtifactMetadata {
+export type LogicLevel = 0 | 1;
+
+export interface CaptureArtifactInput {
   sourceName?: string;
   formatHint?: string;
   mediaType?: string;
   capturedAt?: string;
+  text?: string;
+  bytes?: Uint8Array;
 }
 
-export interface TextCaptureArtifactInput extends CaptureArtifactMetadata {
-  contentKind: "text";
-  text: string;
+export interface CaptureArtifactSummary {
+  sourceName: string | null;
+  formatHint: string | null;
+  mediaType: string | null;
+  capturedAt: string | null;
+  byteLength: number | null;
+  hasText: boolean;
 }
 
-export interface BinaryCaptureArtifactInput extends CaptureArtifactMetadata {
-  contentKind: "bytes";
-  bytes: Uint8Array;
-}
-
-export type CaptureArtifactInput =
-  | TextCaptureArtifactInput
-  | BinaryCaptureArtifactInput;
-
-export interface NormalizedCaptureTransition {
+export interface LogicCaptureTransition {
   sampleIndex: number;
-  timestampNs: number;
-  level: 0 | 1;
+  timeNs: number;
+  fromLevel: LogicLevel;
+  toLevel: LogicLevel;
 }
 
-export interface NormalizedCaptureChannel {
+export interface LogicCaptureChannel {
   channelId: string;
   label?: string;
-  initialLevel: 0 | 1;
-  transitions: readonly NormalizedCaptureTransition[];
+  initialLevel: LogicLevel;
+  transitions: readonly LogicCaptureTransition[];
 }
 
-export interface NormalizedLogicCapture {
+export interface LogicCapture {
+  adapterId: string;
+  sourceName: string | null;
+  capturedAt: string | null;
   sampleRateHz: number;
+  samplePeriodNs: number;
   totalSamples: number;
   durationNs: number;
-  channels: readonly NormalizedCaptureChannel[];
-  metadata: CaptureArtifactMetadata & {
-    adapterId: string;
-  };
+  channels: readonly LogicCaptureChannel[];
+  artifact: CaptureArtifactSummary;
 }
 
-export interface CaptureSessionCompatibilityIssue {
-  code: SessionCaptureCompatibilityCode;
+export interface CaptureCompatibilityIssue {
+  code: CaptureCompatibilityIssueCode;
   message: string;
-  sessionChannelId?: string;
-  captureChannelId?: string;
+  channelId?: string;
   expected?: number | string;
   actual?: number | string;
 }
 
-export interface CaptureLoadContext {
-  session: LogicAnalyzerSessionRecord;
-}
-
-export interface CaptureAdapterMatch {
-  confidence: "exact" | "heuristic";
-  reason: string;
-}
-
-export interface CaptureAdapter {
-  readonly adapterId: string;
-  readonly displayName: string;
-  matches(input: CaptureArtifactInput): CaptureAdapterMatch | null;
-  load(
-    input: CaptureArtifactInput,
-    context: CaptureLoadContext
-  ): Promise<CaptureAdapterLoadResult>;
-}
-
-export interface CaptureLoadSuccess {
+export interface LoadCaptureSuccess {
   ok: true;
   adapterId: string;
-  artifact: CaptureArtifactMetadata;
-  capture: NormalizedLogicCapture;
+  selectedBy: "format-hint" | "probe";
+  capture: LogicCapture;
 }
 
-export interface CaptureLoadUnsupportedAdapterFailure {
+export interface UnsupportedCaptureAdapterFailure {
   ok: false;
   reason: "unsupported-adapter";
-  artifact: CaptureArtifactMetadata;
-  attemptedAdapterIds: readonly string[];
+  adapterIds: readonly string[];
+  artifact: CaptureArtifactSummary;
   message: string;
 }
 
-export interface CaptureLoadUnreadableInputFailure {
+export interface UnreadableCaptureInputFailure {
   ok: false;
   reason: "unreadable-input";
-  adapterId: string | null;
-  artifact: CaptureArtifactMetadata;
-  detail: string;
-  message: string;
-}
-
-export interface CaptureLoadCompatibilityFailure {
-  ok: false;
-  reason: "incompatible-session-capture";
   adapterId: string;
-  artifact: CaptureArtifactMetadata;
-  issues: readonly CaptureSessionCompatibilityIssue[];
+  selectedBy: "format-hint" | "probe";
+  artifact: CaptureArtifactSummary;
   message: string;
+  details: readonly string[];
 }
 
-export type CaptureLoadFailure =
-  | CaptureLoadUnsupportedAdapterFailure
-  | CaptureLoadUnreadableInputFailure
-  | CaptureLoadCompatibilityFailure;
+export interface IncompatibleSessionCaptureFailure {
+  ok: false;
+  reason: "incompatible-session";
+  adapterId: string;
+  selectedBy: "format-hint" | "probe";
+  artifact: CaptureArtifactSummary;
+  capture: LogicCapture;
+  issues: readonly CaptureCompatibilityIssue[];
+}
 
-export type CaptureLoadResult = CaptureLoadSuccess | CaptureLoadFailure;
+export type LoadCaptureResult =
+  | LoadCaptureSuccess
+  | UnsupportedCaptureAdapterFailure
+  | UnreadableCaptureInputFailure
+  | IncompatibleSessionCaptureFailure;
+
+export interface CaptureAdapterParseSuccess {
+  ok: true;
+  capture: LogicCapture;
+}
+
+export interface CaptureAdapterParseFailure {
+  ok: false;
+  reason: "unreadable-input";
+  adapterId: string;
+  artifact: CaptureArtifactSummary;
+  message: string;
+  details: readonly string[];
+}
 
 export type CaptureAdapterLoadResult =
-  | CaptureLoadSuccess
-  | CaptureLoadUnreadableInputFailure
-  | CaptureLoadCompatibilityFailure;
+  | CaptureAdapterParseSuccess
+  | CaptureAdapterParseFailure;
+
+export interface LogicCaptureAdapter {
+  id: string;
+  formatHints: readonly string[];
+  canLoad(input: CaptureArtifactInput): boolean;
+  load(input: CaptureArtifactInput): CaptureAdapterLoadResult;
+}
+
+export interface LoadCaptureRequest {
+  session: LogicAnalyzerSessionRecord;
+  artifact: CaptureArtifactInput;
+}
+
+export const summarizeCaptureArtifact = (
+  artifact: CaptureArtifactInput
+): CaptureArtifactSummary => ({
+  sourceName: artifact.sourceName ?? null,
+  formatHint: artifact.formatHint ?? null,
+  mediaType: artifact.mediaType ?? null,
+  capturedAt: artifact.capturedAt ?? null,
+  byteLength: artifact.bytes?.byteLength ?? null,
+  hasText: typeof artifact.text === "string"
+});
+
+export const readArtifactText = (
+  artifact: CaptureArtifactInput
+): string | null => {
+  if (typeof artifact.text === "string") {
+    return artifact.text;
+  }
+
+  if (artifact.bytes instanceof Uint8Array) {
+    return new TextDecoder().decode(artifact.bytes);
+  }
+
+  return null;
+};
