@@ -2,7 +2,7 @@
   "name": "listenai-agent-skills",
   "version": "0.0.1",
   "private": true,
-  "packageManager": "pnpm@10",
+  "packageManager": "pnpm@10.33.0",
   "type": "module",
   "scripts": {
     "test": "pnpm --filter @listenai/resource-manager test -- --run src/resource-manager.test.ts src/server/app.test.ts src/server/lease-manager.test.ts src/server/lease-integration.test.ts && pnpm --filter @listenai/resource-client test -- --run src/http-resource-manager.test.ts && pnpm --filter @listenai/skill-logic-analyzer test -- --run src/logic-analyzer-skill.test.ts src/generic-skill.test.ts src/capture-loader.test.ts src/waveform-analyzer.test.ts",
