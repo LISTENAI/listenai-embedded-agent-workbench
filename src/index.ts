@@ -1,11 +1,12 @@
-export * from "./logic-analyzer/contracts.js";
-export * from "./logic-analyzer/capture-contracts.js";
-export * from "./logic-analyzer/analysis-contracts.js";
-export * from "./logic-analyzer/waveform-analyzer.js";
-export * from "./logic-analyzer/capture-loader.js";
-export * from "./logic-analyzer/logic-analyzer-skill.js";
-export * from "./logic-analyzer/generic-skill.js";
-export * from "./resource-manager/contracts.js";
-export * from "./resource-manager/device-provider.js";
-export * from "./resource-manager/resource-manager.js";
-export * from "./resource-manager/testing/fake-device-provider.js";
+// Keep the root package as a thin compatibility layer over workspace-owned packages.
+export * from "@listenai/contracts";
+export * from "@listenai/skill-logic-analyzer";
+export { HttpResourceManager } from "@listenai/resource-client";
+export {
+  FakeDeviceProvider,
+  InMemoryResourceManager,
+  createResourceManager,
+  type DeviceProvider,
+  type DiscoveredDevice,
+  type ResourceManagerOptions,
+} from "@listenai/resource-manager";

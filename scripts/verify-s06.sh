@@ -3,5 +3,5 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-npm --prefix "$ROOT_DIR" test -- --run src/logic-analyzer/end-to-end.test.ts
+pnpm --dir "$ROOT_DIR" run test:s06
 bash "$ROOT_DIR/scripts/verify-s05.sh"

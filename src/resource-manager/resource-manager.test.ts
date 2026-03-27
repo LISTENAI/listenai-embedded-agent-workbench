@@ -45,12 +45,14 @@ describe("resource manager contract", () => {
     expect(ALLOCATION_FAILURE_REASONS).toEqual([
       "device-not-found",
       "device-disconnected",
-      "device-already-allocated"
+      "device-already-allocated",
+      "server-unavailable"
     ]);
     expect(RELEASE_FAILURE_REASONS).toEqual([
       "device-not-found",
       "device-not-allocated",
-      "owner-mismatch"
+      "owner-mismatch",
+      "server-unavailable"
     ]);
     expect(CONNECTION_STATES).toEqual(["connected", "disconnected"]);
     expect(ALLOCATION_STATES).toEqual(["free", "allocated"]);
@@ -139,7 +141,7 @@ describe("in-memory resource manager", () => {
         updatedAt: connectedAt
       }
     ]);
-    expect(manager.listDevices()).toEqual(records);
+    expect(await manager.listDevices()).toEqual(records);
   });
 
   it("transitions a connected device from free to allocated to free", async () => {
@@ -150,7 +152,7 @@ describe("in-memory resource manager", () => {
 
     await manager.refreshInventory();
 
-    const allocation = manager.allocateDevice({
+    const allocation = await manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       requestedAt: allocateAt
@@ -170,7 +172,7 @@ describe("in-memory resource manager", () => {
       }
     });
 
-    const release = manager.releaseDevice({
+    const release = await manager.releaseDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       releasedAt: releaseAt
@@ -189,7 +191,7 @@ describe("in-memory resource manager", () => {
         updatedAt: releaseAt
       }
     });
-    expect(manager.listDevices()).toEqual([
+    expect(await manager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -211,12 +213,12 @@ describe("in-memory resource manager", () => {
 
     await manager.refreshInventory();
 
-    const firstAllocation = manager.allocateDevice({
+    const firstAllocation = await manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       requestedAt: allocateAt
     });
-    const conflictingAllocation = manager.allocateDevice({
+    const conflictingAllocation = await manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-beta",
       requestedAt: conflictAt
@@ -244,7 +246,7 @@ describe("in-memory resource manager", () => {
       });
     }
 
-    expect(manager.listDevices()).toEqual([
+    expect(await manager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -265,13 +267,13 @@ describe("in-memory resource manager", () => {
     });
 
     await manager.refreshInventory();
-    manager.allocateDevice({
+    await manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       requestedAt: allocateAt
     });
 
-    const releaseResult = manager.releaseDevice({
+    const releaseResult = await manager.releaseDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-beta",
       releasedAt: releaseAt
@@ -298,7 +300,7 @@ describe("in-memory resource manager", () => {
       });
     }
 
-    expect(manager.listDevices()).toEqual([
+    expect(await manager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -319,7 +321,7 @@ describe("in-memory resource manager", () => {
     });
 
     await manager.refreshInventory();
-    manager.allocateDevice({
+    await manager.allocateDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       requestedAt: allocateAt
@@ -341,7 +343,7 @@ describe("in-memory resource manager", () => {
       }
     ]);
 
-    const releaseResult = manager.releaseDevice({
+    const releaseResult = await manager.releaseDevice({
       deviceId: "logic-1",
       ownerSkillId: "skill-alpha",
       releasedAt: releaseAt
@@ -360,6 +362,6 @@ describe("in-memory resource manager", () => {
         updatedAt: releaseAt
       }
     });
-    expect(manager.listDevices()).toEqual([]);
+    expect(await manager.listDevices()).toEqual([]);
   });
 });

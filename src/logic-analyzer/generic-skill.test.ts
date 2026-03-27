@@ -206,7 +206,7 @@ describe("generic logic analyzer contract", () => {
         reason: "not-started"
       }
     });
-    expect(resourceManager.listDevices()).toEqual([]);
+    expect(await resourceManager.listDevices()).toEqual([]);
   });
 
   it("preserves nested start-session allocation failures without attempting cleanup", async () => {
@@ -305,7 +305,7 @@ describe("generic logic analyzer contract", () => {
         }
       }
     });
-    expect(resourceManager.listDevices()).toEqual([
+    expect(await resourceManager.listDevices()).toEqual([
       expect.objectContaining({
         deviceId: "logic-1",
         allocationState: "free",
@@ -433,16 +433,16 @@ describe("generic logic analyzer contract", () => {
       async refreshInventory() {
         return [createDeviceRecord()];
       },
-      listDevices() {
+      async listDevices() {
         return [allocatedDevice];
       },
-      allocateDevice() {
+      async allocateDevice() {
         return {
           ok: true,
           device: allocatedDevice
         };
       },
-      releaseDevice(request) {
+      async releaseDevice(request) {
         expect(request).toEqual({
           deviceId: "logic-1",
           ownerSkillId: "logic-analyzer",
@@ -506,6 +506,6 @@ describe("generic logic analyzer contract", () => {
         }
       }
     });
-    expect(resourceManager.listDevices()).toEqual([allocatedDevice]);
+    expect(await resourceManager.listDevices()).toEqual([allocatedDevice]);
   });
 });

@@ -273,7 +273,7 @@ describe("logic analyzer skill", () => {
         analysis: createValidRequest().analysis
       }
     });
-    expect(resourceManager.listDevices()).toEqual([
+    expect(await resourceManager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -331,7 +331,7 @@ describe("logic analyzer skill", () => {
         ])
       );
     }
-    expect(resourceManager.listDevices()).toEqual([]);
+    expect(await resourceManager.listDevices()).toEqual([]);
   });
 
   it("returns allocation failures with the current inventory snapshot on conflict", async () => {
@@ -480,7 +480,7 @@ describe("logic analyzer skill", () => {
     const startResult = await skill.startSession(createValidRequest());
     expect(startResult.ok).toBe(true);
 
-    const endResult = skill.endSession({
+    const endResult = await skill.endSession({
       sessionId: "session-001",
       deviceId: "logic-1",
       ownerSkillId: "logic-analyzer",
@@ -500,7 +500,7 @@ describe("logic analyzer skill", () => {
         updatedAt: releaseAt
       }
     });
-    expect(resourceManager.listDevices()).toEqual([
+    expect(await resourceManager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -526,7 +526,7 @@ describe("logic analyzer skill", () => {
     const startResult = await skill.startSession(createValidRequest());
     expect(startResult.ok).toBe(true);
 
-    const endResult = skill.endSession({
+    const endResult = await skill.endSession({
       sessionId: "session-001",
       deviceId: "logic-1",
       ownerSkillId: "other-skill",
@@ -573,7 +573,7 @@ describe("logic analyzer skill", () => {
     provider.setConnectedDevices([]);
     await resourceManager.refreshInventory();
 
-    const endResult = skill.endSession({
+    const endResult = await skill.endSession({
       sessionId: "session-001",
       deviceId: "logic-1",
       ownerSkillId: "logic-analyzer",
@@ -593,6 +593,6 @@ describe("logic analyzer skill", () => {
         updatedAt: releaseAt
       }
     });
-    expect(resourceManager.listDevices()).toEqual([]);
+    expect(await resourceManager.listDevices()).toEqual([]);
   });
 });

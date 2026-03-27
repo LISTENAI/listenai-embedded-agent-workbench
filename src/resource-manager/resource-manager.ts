@@ -3,16 +3,12 @@ import type {
   AllocationResult,
   DeviceRecord,
   ReleaseRequest,
-  ReleaseResult
-} from "./contracts.js";
+  ReleaseResult,
+  ResourceManager
+} from "../../share/contracts/src/index.js";
 import type { DeviceProvider, DiscoveredDevice } from "./device-provider.js";
 
-export interface ResourceManager {
-  refreshInventory(): Promise<readonly DeviceRecord[]>;
-  listDevices(): readonly DeviceRecord[];
-  allocateDevice(request: AllocationRequest): AllocationResult;
-  releaseDevice(request: ReleaseRequest): ReleaseResult;
-}
+export type { ResourceManager } from "../../share/contracts/src/index.js";
 
 export interface ResourceManagerOptions {
   now?: () => string;
@@ -93,11 +89,11 @@ export class InMemoryResourceManager implements ResourceManager {
     return this.listDevices();
   }
 
-  listDevices(): readonly DeviceRecord[] {
+  async listDevices(): Promise<readonly DeviceRecord[]> {
     return sortDevices(this.#inventory.values());
   }
 
-  allocateDevice(request: AllocationRequest): AllocationResult {
+  async allocateDevice(request: AllocationRequest): Promise<AllocationResult> {
     const device = this.#inventory.get(request.deviceId);
     if (!device) {
       return {
@@ -158,7 +154,7 @@ export class InMemoryResourceManager implements ResourceManager {
     };
   }
 
-  releaseDevice(request: ReleaseRequest): ReleaseResult {
+  async releaseDevice(request: ReleaseRequest): Promise<ReleaseResult> {
     const device = this.#inventory.get(request.deviceId);
     if (!device) {
       return {

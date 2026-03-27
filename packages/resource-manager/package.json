@@ -1,0 +1,29 @@
+{
+  "name": "@listenai/resource-manager",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "resource-manager": "./src/cli.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@listenai/contracts": "workspace:*",
+    "hono": "^4.12.9"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

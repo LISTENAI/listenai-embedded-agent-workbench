@@ -37,7 +37,7 @@ describe("logic analyzer package-root end-to-end workflow", () => {
     });
     const sessionSkill = createLogicAnalyzerSkill(resourceManager);
 
-    expect(resourceManager.listDevices()).toEqual([]);
+    expect(await resourceManager.listDevices()).toEqual([]);
 
     const refreshedInventory = await resourceManager.refreshInventory();
 
@@ -53,7 +53,7 @@ describe("logic analyzer package-root end-to-end workflow", () => {
         updatedAt: connectedAt
       }
     ]);
-    expect(resourceManager.listDevices()).toEqual(refreshedInventory);
+    expect(await resourceManager.listDevices()).toEqual(refreshedInventory);
 
     const result = await genericSkill.run({
       session: {
@@ -154,7 +154,7 @@ describe("logic analyzer package-root end-to-end workflow", () => {
       }
     ]);
 
-    expect(resourceManager.listDevices()).toEqual([
+    expect(await resourceManager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",
@@ -167,7 +167,7 @@ describe("logic analyzer package-root end-to-end workflow", () => {
       }
     ]);
 
-    const endResult = sessionSkill.endSession({
+    const endResult = await sessionSkill.endSession({
       sessionId: result.session.sessionId,
       deviceId: result.session.deviceId,
       ownerSkillId: result.session.ownerSkillId,
@@ -187,7 +187,7 @@ describe("logic analyzer package-root end-to-end workflow", () => {
         updatedAt: releasedAt
       }
     });
-    expect(resourceManager.listDevices()).toEqual([
+    expect(await resourceManager.listDevices()).toEqual([
       {
         deviceId: "logic-1",
         label: "USB Logic Analyzer",

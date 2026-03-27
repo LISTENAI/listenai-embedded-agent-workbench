@@ -4,11 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test": "pnpm --filter @listenai/resource-manager test -- --run src/resource-manager.test.ts src/server/app.test.ts src/server/lease-manager.test.ts src/server/lease-integration.test.ts && pnpm --filter @listenai/resource-client test -- --run src/http-resource-manager.test.ts && pnpm --filter @listenai/skill-logic-analyzer test -- --run src/logic-analyzer-skill.test.ts src/generic-skill.test.ts src/capture-loader.test.ts src/waveform-analyzer.test.ts",
+    "test:s06": "vitest run tests/resource-manager.e2e.test.ts",
+    "test:s07": "pnpm exec vitest run tests/logic-analyzer-http.e2e.test.ts",
+    "build": "pnpm --filter @listenai/contracts build && pnpm --filter @listenai/resource-client build && pnpm --filter @listenai/resource-manager build && pnpm --filter @listenai/skill-logic-analyzer build",
+    "typecheck": "tsc --noEmit && pnpm --filter @listenai/contracts typecheck && pnpm --filter @listenai/resource-manager typecheck && pnpm --filter @listenai/resource-client typecheck && pnpm --filter @listenai/skill-logic-analyzer typecheck",
+    "verify:s05": "bash scripts/verify-s05.sh",
+    "verify:s06": "bash scripts/verify-s06.sh",
+    "verify:s07": "bash scripts/verify-s07.sh"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@listenai/contracts": "workspace:*",
+    "@listenai/resource-client": "workspace:*",
+    "@listenai/resource-manager": "workspace:*",
+    "@listenai/skill-logic-analyzer": "workspace:*",
+    "hono": "^4.12.9"
   }
 }
