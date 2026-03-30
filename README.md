@@ -54,7 +54,8 @@ For advanced manual runtime checks, the packaged resource-manager CLI entrypoint
 - `CONTRIBUTING.md` - contributor bootstrap, verification expectations, and repo-specific diagnostics.
 - `.github/workflows/ci.yml` - the GitHub Actions baseline for install, typecheck, test, and build.
 - `packages/skill-logic-analyzer/README.md` - canonical host-facing guidance for the logic-analyzer package.
-- `skills/logic-analyzer/README.md` - compatibility mirror that points back to the package-owned docs.
+- `packages/skill-logic-analyzer/SKILL.md` - the packaged skill descriptor shipped to Claude Code and Codex installs.
+- `src/index.ts` - the remaining root compatibility barrel for repo-local consumers.
 
 ## Repository focus right now
 

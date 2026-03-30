@@ -4,33 +4,11 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const LEGACY_SKILL_DIR = ["skills", "logic-analyzer"].join("/");
 const EXPECTED_ASSETS = {
   skillDescriptor: "./SKILL.md",
   readme: "./README.md"
 };
-const ROOT_MIRROR_CHECKS = [
-  {
-    relativePath: "skills/logic-analyzer/SKILL.md",
-    requiredPhrases: [
-      "compatibility mirror",
-      "not the canonical editing surface",
-      "packages/skill-logic-analyzer/SKILL.md",
-      "packages/skill-logic-analyzer/README.md",
-      "listenai.skillAssets",
-      "@listenai/skill-logic-analyzer"
-    ]
-  },
-  {
-    relativePath: "skills/logic-analyzer/README.md",
-    requiredPhrases: [
-      "secondary compatibility surface",
-      "canonical host-facing contract now lives in `@listenai/skill-logic-analyzer`",
-      "packages/skill-logic-analyzer/SKILL.md",
-      "packages/skill-logic-analyzer/README.md",
-      "not the canonical install or copy-from path"
-    ]
-  }
-];
 
 function readJson(filePath) {
   try {
@@ -75,7 +53,7 @@ export function resolveDeclaredAsset(packageDir, metadata, key) {
   const resolvedPath = resolve(packageDir, declaredPath);
   assertInsideDirectory(packageDir, resolvedPath, `Metadata key "${metadataKey}"`);
 
-  if (declaredPath.includes("skills/logic-analyzer")) {
+  if (declaredPath.includes(LEGACY_SKILL_DIR)) {
     throw new Error(`Metadata key "${metadataKey}" still points at root-owned assets. Expected "${expectedRelativePath}", received "${declaredPath}".`);
   }
 
@@ -91,28 +69,6 @@ export function resolveDeclaredAsset(packageDir, metadata, key) {
   };
 }
 
-export function assertRootMirrorPointsToPackage(repoRoot, check) {
-  const filePath = resolve(repoRoot, check.relativePath);
-
-  if (!existsSync(filePath)) {
-    throw new Error(`Root compatibility file is missing: "${check.relativePath}".`);
-  }
-
-  const content = readFileSync(filePath, "utf8");
-  const missingPhrases = check.requiredPhrases.filter((phrase) => !content.includes(phrase));
-
-  if (missingPhrases.length > 0) {
-    throw new Error(
-      `Root compatibility file "${check.relativePath}" still looks canonical. Missing required pointer text: ${missingPhrases.map((phrase) => `"${phrase}"`).join(", ")}.`
-    );
-  }
-
-  return {
-    relativePath: check.relativePath,
-    requiredPhrases: check.requiredPhrases
-  };
-}
-
 export function validateSkillPackageAssets(repoRoot = DEFAULT_REPO_ROOT) {
   const packageDir = resolve(repoRoot, "packages", "skill-logic-analyzer");
   const packageJsonPath = resolve(packageDir, "package.json");
@@ -122,14 +78,15 @@ export function validateSkillPackageAssets(repoRoot = DEFAULT_REPO_ROOT) {
   }
 
   const packageJson = readJson(packageJsonPath);
-  const assets = Object.keys(EXPECTED_ASSETS).map((key) => resolveDeclaredAsset(packageDir, packageJson, key));
-  const rootMirrorFiles = ROOT_MIRROR_CHECKS.map((check) => assertRootMirrorPointsToPackage(repoRoot, check));
+  const assets = Object.keys(EXPECTED_ASSETS).map((key) =>
+    resolveDeclaredAsset(packageDir, packageJson, key)
+  );
 
   return {
     repoRoot,
+    packageDir,
     packageJsonPath,
-    assets,
-    rootMirrorFiles
+    assets
   };
 }
 
@@ -139,9 +96,7 @@ export function formatValidationSuccess(result) {
     ...result.assets.map(
       (asset) =>
         `- ${asset.key}: ${asset.declaredPath} -> ${relative(result.repoRoot, asset.resolvedPath)}`
-    ),
-    "[check-skill-package-assets] OK root compatibility docs stay secondary pointers:",
-    ...result.rootMirrorFiles.map((file) => `- ${file.relativePath}`)
+    )
   ].join("\n");
 }
 

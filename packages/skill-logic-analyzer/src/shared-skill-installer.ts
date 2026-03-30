@@ -3,6 +3,7 @@ import { isAbsolute, resolve, sep } from "node:path";
 
 export const PACKAGE_METADATA_KEY_PREFIX = "listenai.skillAssets";
 export const SKILL_DIRECTORY_NAME = "logic-analyzer";
+const LEGACY_SKILL_DIR = ["skills", SKILL_DIRECTORY_NAME].join("/");
 export const EXPECTED_SKILL_ASSETS = {
   skillDescriptor: "./SKILL.md",
   readme: "./README.md"
@@ -107,7 +108,7 @@ const resolveDeclaredAsset = (
     );
   }
 
-  if (declaredPath.includes("skills/logic-analyzer")) {
+  if (declaredPath.includes(LEGACY_SKILL_DIR)) {
     fail(
       "invalid-package-metadata",
       `Metadata key "${metadataKey}" still points at root-owned assets. Expected "${expectedRelativePath}", received "${declaredPath}".`

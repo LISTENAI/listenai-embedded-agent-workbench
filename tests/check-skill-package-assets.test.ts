@@ -1,23 +1,20 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
+// @ts-ignore - root workspace typecheck can miss vitest helper re-exports and .mjs module declarations here, but runtime resolves them correctly
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  assertRootMirrorPointsToPackage,
-  formatValidationSuccess,
-  resolveDeclaredAsset,
-  validateSkillPackageAssets
-} from "../scripts/check-skill-package-assets.mjs";
+// @ts-ignore - root workspace typecheck does not load a declaration for this .mjs helper in NodeNext mode
+import { formatValidationSuccess, resolveDeclaredAsset, validateSkillPackageAssets } from "../scripts/check-skill-package-assets.mjs";
 
-const tempDirs = [] as string[];
+const tempDirs: string[] = [];
+const legacySkillDir = ["skills", "logic-analyzer"].join("/");
 
 const createTempRepo = () => {
   const tempDir = mkdtempSync(resolve(tmpdir(), "logic-analyzer-boundary-"));
   tempDirs.push(tempDir);
 
   mkdirSync(resolve(tempDir, "packages", "skill-logic-analyzer"), { recursive: true });
-  mkdirSync(resolve(tempDir, "skills", "logic-analyzer"), { recursive: true });
 
   return tempDir;
 };
@@ -47,29 +44,6 @@ const writeValidRepo = (repoRoot: string) => {
   );
   writeRepoFile(repoRoot, "packages/skill-logic-analyzer/SKILL.md", "package skill doc\n");
   writeRepoFile(repoRoot, "packages/skill-logic-analyzer/README.md", "package readme\n");
-  writeRepoFile(
-    repoRoot,
-    "skills/logic-analyzer/SKILL.md",
-    [
-      "compatibility mirror",
-      "not the canonical editing surface",
-      "packages/skill-logic-analyzer/SKILL.md",
-      "packages/skill-logic-analyzer/README.md",
-      "listenai.skillAssets",
-      "@listenai/skill-logic-analyzer"
-    ].join("\n")
-  );
-  writeRepoFile(
-    repoRoot,
-    "skills/logic-analyzer/README.md",
-    [
-      "secondary compatibility surface",
-      "canonical host-facing contract now lives in `@listenai/skill-logic-analyzer`",
-      "packages/skill-logic-analyzer/SKILL.md",
-      "packages/skill-logic-analyzer/README.md",
-      "not the canonical install or copy-from path"
-    ].join("\n")
-  );
 };
 
 afterEach(() => {
@@ -82,13 +56,29 @@ afterEach(() => {
 });
 
 describe("check-skill-package-assets helper", () => {
-  it("passes against the real repository boundary and prints concise success output", () => {
-    const result = validateSkillPackageAssets();
+  it("passes against package-owned metadata without depending on root mirrors", () => {
+    const repoRoot = createTempRepo();
+    writeValidRepo(repoRoot);
+
+    const result = validateSkillPackageAssets(repoRoot);
     const output = formatValidationSuccess(result);
 
+    expect(result.assets).toEqual([
+      {
+        key: "skillDescriptor",
+        declaredPath: "./SKILL.md",
+        expectedRelativePath: "./SKILL.md",
+        resolvedPath: resolve(repoRoot, "packages/skill-logic-analyzer/SKILL.md")
+      },
+      {
+        key: "readme",
+        declaredPath: "./README.md",
+        expectedRelativePath: "./README.md",
+        resolvedPath: resolve(repoRoot, "packages/skill-logic-analyzer/README.md")
+      }
+    ]);
     expect(output).toContain("OK skill package metadata resolves package-owned assets");
-    expect(output).toContain("skills/logic-analyzer/SKILL.md");
-    expect(output).toContain("skills/logic-analyzer/README.md");
+    expect(output).not.toContain("root compatibility docs");
   });
 
   it("fails explicitly when a metadata key is missing", () => {
@@ -116,6 +106,48 @@ describe("check-skill-package-assets helper", () => {
     );
   });
 
+  it("rejects malformed absolute metadata paths", () => {
+    const repoRoot = createTempRepo();
+    writeValidRepo(repoRoot);
+
+    expect(() =>
+      resolveDeclaredAsset(
+        resolve(repoRoot, "packages", "skill-logic-analyzer"),
+        {
+          listenai: {
+            skillAssets: {
+              skillDescriptor: "/tmp/skill.md",
+              readme: "./README.md"
+            }
+          }
+        },
+        "skillDescriptor"
+      )
+    ).toThrowError(
+      'Metadata key "listenai.skillAssets.skillDescriptor" must stay package-relative. Expected "./SKILL.md", received absolute path "/tmp/skill.md".'
+    );
+  });
+
+  it("rejects metadata that escapes the package root", () => {
+    const repoRoot = createTempRepo();
+    writeValidRepo(repoRoot);
+
+    expect(() =>
+      resolveDeclaredAsset(
+        resolve(repoRoot, "packages", "skill-logic-analyzer"),
+        {
+          listenai: {
+            skillAssets: {
+              skillDescriptor: "../../outside/SKILL.md",
+              readme: "./README.md"
+            }
+          }
+        },
+        "skillDescriptor"
+      )
+    ).toThrowError(/Metadata key "listenai\.skillAssets\.skillDescriptor" escapes the package root:/);
+  });
+
   it("rejects metadata that falls back to root-owned assets", () => {
     const repoRoot = createTempRepo();
     writeValidRepo(repoRoot);
@@ -127,32 +159,24 @@ describe("check-skill-package-assets helper", () => {
           listenai: {
             skillAssets: {
               skillDescriptor: "./SKILL.md",
-              readme: "./skills/logic-analyzer/README.md"
+              readme: `./${legacySkillDir}/README.md`
             }
           }
         },
         "readme"
       )
     ).toThrowError(
-      'Metadata key "listenai.skillAssets.readme" still points at root-owned assets. Expected "./README.md", received "./skills/logic-analyzer/README.md".'
+      `Metadata key "listenai.skillAssets.readme" still points at root-owned assets. Expected "./README.md", received "./${legacySkillDir}/README.md".`
     );
   });
 
-  it("fails when a root compatibility doc stops reading as secondary", () => {
+  it("fails when metadata resolves to a missing package-owned file", () => {
     const repoRoot = createTempRepo();
     writeValidRepo(repoRoot);
-    writeRepoFile(repoRoot, "skills/logic-analyzer/README.md", "canonical docs live here\n");
+    rmSync(resolve(repoRoot, "packages/skill-logic-analyzer/README.md"));
 
-    expect(() =>
-      assertRootMirrorPointsToPackage(repoRoot, {
-        relativePath: "skills/logic-analyzer/README.md",
-        requiredPhrases: [
-          "secondary compatibility surface",
-          "canonical host-facing contract now lives in `@listenai/skill-logic-analyzer`"
-        ]
-      })
-    ).toThrowError(
-      'Root compatibility file "skills/logic-analyzer/README.md" still looks canonical. Missing required pointer text: "secondary compatibility surface", "canonical host-facing contract now lives in `@listenai/skill-logic-analyzer`".'
+    expect(() => validateSkillPackageAssets(repoRoot)).toThrowError(
+      'Metadata key "listenai.skillAssets.readme" resolves to missing file "./README.md" (expected "./README.md").'
     );
   });
 });

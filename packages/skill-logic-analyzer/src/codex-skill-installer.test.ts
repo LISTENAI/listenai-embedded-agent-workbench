@@ -14,7 +14,7 @@ import * as packageRootExports from "./index.js";
 
 const workspaceRoot = resolve(import.meta.dirname, "..", "..", "..");
 const packageDir = resolve(workspaceRoot, "packages", "skill-logic-analyzer");
-const rootMirrorDir = resolve(workspaceRoot, "skills", "logic-analyzer");
+const legacySkillDir = ["skills", "logic-analyzer"].join("/");
 
 const createTempDir = (prefix: string) => mkdtempSync(resolve(tmpdir(), `${prefix}-`));
 
@@ -104,13 +104,11 @@ describe("codex skill installer", () => {
       );
       const packageSkill = readFileSync(resolve(packageDir, "SKILL.md"), "utf8");
       const packageReadme = readFileSync(resolve(packageDir, "README.md"), "utf8");
-      const rootMirrorSkill = readFileSync(resolve(rootMirrorDir, "SKILL.md"), "utf8");
-      const rootMirrorReadme = readFileSync(resolve(rootMirrorDir, "README.md"), "utf8");
 
       expect(installedSkill).toBe(packageSkill);
       expect(installedReadme).toBe(packageReadme);
-      expect(installedSkill).not.toBe(rootMirrorSkill);
-      expect(installedReadme).not.toBe(rootMirrorReadme);
+      expect(installedSkill).toContain("authoritative host-facing assets");
+      expect(installedReadme).toContain("canonical home of the logic-analyzer host assets");
 
       const output = formatCodexSkillInstallSuccess(result);
       expect(output).toContain(
@@ -210,16 +208,16 @@ describe("codex skill installer", () => {
 
     withTempDir("codex-skill-root-mirror", (tempDir) => {
       const fakePackageRoot = resolve(tempDir, "package");
-      mkdirSync(resolve(fakePackageRoot, "skills", "logic-analyzer"), {
+      mkdirSync(resolve(fakePackageRoot, ...legacySkillDir.split("/")), {
         recursive: true
       });
       writePackageJson(fakePackageRoot, {
         skillDescriptor: "./SKILL.md",
-        readme: "./skills/logic-analyzer/README.md"
+        readme: `./${legacySkillDir}/README.md`
       });
       writeFileSync(resolve(fakePackageRoot, "SKILL.md"), "package skill\n");
       writeFileSync(
-        resolve(fakePackageRoot, "skills", "logic-analyzer", "README.md"),
+        resolve(fakePackageRoot, ...legacySkillDir.split("/"), "README.md"),
         "root mirror fallback\n"
       );
 

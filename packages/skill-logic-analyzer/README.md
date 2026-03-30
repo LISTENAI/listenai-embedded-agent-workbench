@@ -2,7 +2,7 @@
 
 This package is the canonical home of the logic-analyzer host assets and runtime surface. Hosts should consume the package-root exports from `@listenai/skill-logic-analyzer` and resolve the shipped docs through this package's metadata contract instead of treating the monorepo root as the source of truth.
 
-If you are browsing the repository, treat `skills/logic-analyzer/` and the repo-root `src/index.ts` barrel as compatibility surfaces only. They exist so older repo-local entrypoints keep working, but new host integrations should start here.
+If you are browsing the repository, start with this package's `README.md` and `SKILL.md`. The root `src/index.ts` barrel remains available as a thin compatibility layer for existing repo-local consumers, but new host integrations should document and import the package-owned surface first.
 
 ## Canonical package-owned asset contract
 
@@ -34,9 +34,9 @@ The installer creates a package-owned `logic-analyzer/` skill directory under th
   README.md
 ```
 
-For example, the personal destination becomes `~/.codex/skills/logic-analyzer/`, and the project-local destination becomes `.codex/skills/logic-analyzer/`.
+For example, the personal destination becomes `~/.codex/skills/<skill-name>/`, and the project-local destination becomes `.codex/skills/<skill-name>/`; for this package, `<skill-name>` is `logic-analyzer`.
 
-Do not copy files from `skills/logic-analyzer/` when preparing Codex skill directories. That repo-root mirror is a secondary compatibility surface; the installer copies from this package's own `SKILL.md` and `README.md` files.
+The installed files always come from this package's own `SKILL.md` and `README.md`, so package consumers should validate or customize the package-owned docs rather than a repo-root mirror.
 
 ## Claude Code install and export
 
@@ -64,7 +64,7 @@ import {
 } from "@listenai/skill-logic-analyzer";
 ```
 
-The repo-root compatibility barrel is only a shim for monorepo consumers. Do not use it as the main host-facing import path.
+The root `src/index.ts` barrel is only a compatibility shim for monorepo consumers. Do not use it as the main host-facing import path.
 
 ## Runtime surface
 

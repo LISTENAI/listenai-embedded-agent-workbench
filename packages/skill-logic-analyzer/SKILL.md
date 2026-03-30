@@ -10,7 +10,7 @@ Help the host invoke the canonical logic-analyzer package through <code>@listena
 <canonical_source>
 This file and this package's <code>README.md</code> are the authoritative host-facing assets for <code>logic-analyzer</code>.
 
-If you encounter mirrored docs under <code>skills/logic-analyzer/</code> or the repo-root compatibility barrel in <code>src/index.ts</code>, treat them as secondary compatibility surfaces only. Update the package-owned files first.
+If you are working inside the monorepo, the repo-root <code>src/index.ts</code> compatibility barrel can still serve older repo-local entrypoints, but package-owned documentation and exports are the source of truth.
 </canonical_source>
 
 <when_to_use>
@@ -75,6 +75,7 @@ Treat nested payloads as authoritative diagnostics. Do not replace them with a n
 - Read this package's <code>README.md</code> for host-neutral examples, Codex and Claude install destinations, adaptation notes, and the layered verification commands.
 - For Codex installation, use the package-owned CLI <code>listenai-logic-analyzer-install-codex &lt;codex-skills-directory&gt;</code> and target either <code>~/.codex/skills</code> or <code>.codex/skills</code>; the installed skill lives at <code>logic-analyzer/</code> under that directory and contains this package-owned <code>SKILL.md</code> plus <code>README.md</code>.
 - For Claude Code installation, use the package-owned CLI <code>listenai-logic-analyzer-install-claude &lt;claude-skills-directory&gt;</code> and target either <code>~/.claude/skills</code> or <code>.claude/skills</code>; the installed skill lives at <code>logic-analyzer/</code> under that directory and contains this package-owned <code>SKILL.md</code> plus <code>README.md</code>.
+- Repo-local compatibility callers may still import through <code>src/index.ts</code>, but package-owned docs and exports stay canonical.
 - When verifying the assembled template contract, prefer <code>bash scripts/verify-m004-s04.sh</code> or <code>pnpm run verify:s04</code>; those commands rerun the lower installer gates first, then assert the documented CLI usage, success, and failure output.
 - Keep user-visible reporting aligned with the returned structured payloads.
 - Preserve cleanup diagnostics when reporting post-allocation failures.

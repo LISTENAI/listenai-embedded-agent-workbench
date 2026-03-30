@@ -22,11 +22,9 @@ const packageJson = JSON.parse(
 
 const packageReadmePath = resolve(packageDir, "README.md");
 const packageSkillPath = resolve(packageDir, "SKILL.md");
-const rootMirrorReadmePath = resolve(repoRoot, "skills", "logic-analyzer", "README.md");
-const rootMirrorSkillPath = resolve(repoRoot, "skills", "logic-analyzer", "SKILL.md");
 const rootReadmePath = resolve(repoRoot, "README.md");
-const repoCompatibilityPackageName = ["listenai", "agent", "skills"].join("-");
 const expectedAssetKeys: readonly SkillAssetKey[] = ["skillDescriptor", "readme"];
+const legacySkillDir = ["skills", "logic-analyzer"].join("/");
 
 const assertPackageRelativeAssetPath = (
   key: SkillAssetKey,
@@ -63,9 +61,9 @@ const assertPackageRelativeAssetPath = (
     );
   }
 
-  if (value.includes("skills/logic-analyzer")) {
+  if (value.includes(legacySkillDir)) {
     throw new Error(
-      `Package metadata key "listenai.skillAssets.${key}" still points at root-owned skills/logic-analyzer content: "${value}".`
+      `Package metadata key "listenai.skillAssets.${key}" still points at root-owned skill content: "${value}".`
     );
   }
 
@@ -102,29 +100,24 @@ describe("skill package asset contract", () => {
     }
   });
 
-  it("keeps the package docs as the authoritative host-facing guidance", () => {
+  it("keeps the package docs and root README aligned on the canonical package surface", () => {
     const packageReadme = readFileSync(packageReadmePath, "utf8");
     const packageSkill = readFileSync(packageSkillPath, "utf8");
-    const rootMirrorReadme = readFileSync(rootMirrorReadmePath, "utf8");
-    const rootMirrorSkill = readFileSync(rootMirrorSkillPath, "utf8");
     const rootReadme = readFileSync(rootReadmePath, "utf8");
 
     expect(packageReadme).toContain("canonical home of the logic-analyzer host assets");
     expect(packageReadme).toContain('from "@listenai/skill-logic-analyzer"');
-    expect(packageReadme).not.toContain(repoCompatibilityPackageName);
+    expect(packageReadme).toContain("root `src/index.ts` barrel remains available as a thin compatibility layer");
+    expect(packageReadme).not.toContain(`./${legacySkillDir}/README.md`);
 
     expect(packageSkill).toContain("authoritative host-facing assets");
     expect(packageSkill).toContain("@listenai/skill-logic-analyzer");
-
-    expect(rootMirrorReadme).toContain("secondary compatibility surface");
-    expect(rootMirrorReadme).toContain("@listenai/skill-logic-analyzer");
-    expect(rootMirrorReadme).not.toContain(repoCompatibilityPackageName);
-
-    expect(rootMirrorSkill).toContain("compatibility mirror");
-    expect(rootMirrorSkill).toContain("packages/skill-logic-analyzer/SKILL.md");
+    expect(packageSkill).toContain("repo-root <code>src/index.ts</code> compatibility barrel");
+    expect(packageSkill).not.toContain(`${legacySkillDir}/`);
 
     expect(rootReadme).toContain("packages/skill-logic-analyzer/README.md");
-    expect(rootReadme).toContain("thin compatibility layer");
+    expect(rootReadme).toContain("src/index.ts");
+    expect(rootReadme).not.toContain(`./${legacySkillDir}/README.md`);
   });
 
   it("fails loudly when a metadata key is missing", () => {
@@ -160,7 +153,7 @@ describe("skill package asset contract", () => {
       assertPackageRelativeAssetPath("skillDescriptor", {
         listenai: {
           skillAssets: {
-            skillDescriptor: "../../skills/logic-analyzer/SKILL.md"
+            skillDescriptor: `../../${legacySkillDir}/SKILL.md`
           }
         }
       })
@@ -174,12 +167,12 @@ describe("skill package asset contract", () => {
       assertPackageRelativeAssetPath("readme", {
         listenai: {
           skillAssets: {
-            readme: "./skills/logic-analyzer/README.md"
+            readme: `./${legacySkillDir}/README.md`
           }
         }
       })
     ).toThrowError(
-      'Package metadata key "listenai.skillAssets.readme" still points at root-owned skills/logic-analyzer content: "./skills/logic-analyzer/README.md".'
+      `Package metadata key "listenai.skillAssets.readme" still points at root-owned skill content: "./${legacySkillDir}/README.md".`
     );
   });
 

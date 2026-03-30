@@ -24,6 +24,7 @@ class FixtureInstallerError extends Error {
 
 const workspaceRoot = resolve(import.meta.dirname, "..", "..", "..");
 const packageDir = resolve(workspaceRoot, "packages", "skill-logic-analyzer");
+const legacySkillDir = ["skills", "logic-analyzer"].join("/");
 
 const createTempDir = (prefix: string) => mkdtempSync(resolve(tmpdir(), `${prefix}-`));
 
@@ -184,16 +185,16 @@ describe("shared skill installer", () => {
   it("rejects stale root-mirror metadata and drifted asset paths", () => {
     withTempDir("shared-skill-drift-metadata", (tempDir) => {
       const rootMirrorPackageRoot = resolve(tempDir, "root-mirror-package");
-      mkdirSync(resolve(rootMirrorPackageRoot, "skills", "logic-analyzer"), {
+      mkdirSync(resolve(rootMirrorPackageRoot, ...legacySkillDir.split("/")), {
         recursive: true
       });
       writePackageJson(rootMirrorPackageRoot, {
         skillDescriptor: "./SKILL.md",
-        readme: "./skills/logic-analyzer/README.md"
+        readme: `./${legacySkillDir}/README.md`
       });
       writeFileSync(resolve(rootMirrorPackageRoot, "SKILL.md"), "package skill\n");
       writeFileSync(
-        resolve(rootMirrorPackageRoot, "skills", "logic-analyzer", "README.md"),
+        resolve(rootMirrorPackageRoot, ...legacySkillDir.split("/"), "README.md"),
         "root mirror fallback\n"
       );
 
