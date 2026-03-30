@@ -6,6 +6,34 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./claude-skill-installer": {
+      "types": "./src/claude-skill-installer.ts",
+      "default": "./src/claude-skill-installer.ts"
+    },
+    "./codex-skill-installer": {
+      "types": "./src/codex-skill-installer.ts",
+      "default": "./src/codex-skill-installer.ts"
+    },
+    "./package.json": "./package.json",
+    "./SKILL.md": "./SKILL.md",
+    "./README.md": "./README.md"
+  },
+  "files": [
+    "dist",
+    "src",
+    "SKILL.md",
+    "README.md",
+    "package.json"
+  ],
+  "bin": {
+    "listenai-logic-analyzer-install-claude": "./dist/claude-skill-install-cli.js",
+    "listenai-logic-analyzer-install-codex": "./dist/codex-skill-install-cli.js"
+  },
+  "listenai": {
+    "skillAssets": {
+      "skillDescriptor": "./SKILL.md",
+      "readme": "./README.md"
     }
   },
   "scripts": {

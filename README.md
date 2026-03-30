@@ -10,18 +10,18 @@ This repository is currently focused on public GitHub readiness rather than addi
 
 - Engineers evaluating the current monorepo shape before reading source files.
 - Contributors who want the real local verification path before making changes.
-- Agent-host integrators looking for the current logic-analyzer entrypoint and the resource-manager packages it depends on.
+- Agent-host integrators looking for the current logic-analyzer package entrypoint and the resource-manager packages it depends on.
 
 ## Workspace map
 
 The repository uses pnpm workspaces with two top-level ownership boundaries:
 
 - `packages/resource-manager` - the `@listenai/resource-manager` package, which re-exports the shared contracts together with the in-memory manager, device-provider seam, HTTP app/server helpers, lease management, and test-friendly fake provider. The packaged CLI runtime entrypoint lives at `packages/resource-manager/src/cli.ts`.
-- `packages/skill-logic-analyzer` - the `@listenai/skill-logic-analyzer` package, which exports the packaged logic-analyzer skill boundary, request/result contracts, capture loading helpers, and waveform-analysis surface.
+- `packages/skill-logic-analyzer` - the `@listenai/skill-logic-analyzer` package, which exports the canonical logic-analyzer host boundary, package-owned `SKILL.md` and `README.md`, request/result contracts, capture loading helpers, and waveform-analysis surface.
 - `share/contracts` - the `@listenai/contracts` package, which holds the shared resource-manager contracts consumed across the workspace.
 - `share/resource-client` - the `@listenai/resource-client` package, which re-exports the shared contracts plus the `HttpResourceManager` client for calling the resource-manager HTTP API.
 
-The root `src/index.ts` is a thin compatibility layer that re-exports workspace-owned public APIs. It is not the main implementation home; the package-owned code lives under `packages/` and `share/`.
+The root `src/index.ts` is a thin compatibility layer that re-exports workspace-owned public APIs. It remains available for existing repo-local consumers, but package-owned entrypoints under `packages/` and `share/` are the authoritative surfaces to copy into external hosts.
 
 ## Local bootstrap and standard verification
 
@@ -53,7 +53,8 @@ For advanced manual runtime checks, the packaged resource-manager CLI entrypoint
 
 - `CONTRIBUTING.md` - contributor bootstrap, verification expectations, and repo-specific diagnostics.
 - `.github/workflows/ci.yml` - the GitHub Actions baseline for install, typecheck, test, and build.
-- `skills/logic-analyzer/README.md` - host-facing guidance for the packaged logic-analyzer API and lifecycle details.
+- `packages/skill-logic-analyzer/README.md` - canonical host-facing guidance for the logic-analyzer package.
+- `skills/logic-analyzer/README.md` - compatibility mirror that points back to the package-owned docs.
 
 ## Repository focus right now
 

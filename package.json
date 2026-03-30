@@ -10,6 +10,10 @@
     "test:s07": "pnpm exec vitest run tests/logic-analyzer-http.e2e.test.ts",
     "build": "pnpm --filter @listenai/contracts build && pnpm --filter @listenai/resource-client build && pnpm --filter @listenai/resource-manager build && pnpm --filter @listenai/skill-logic-analyzer build",
     "typecheck": "tsc --noEmit && pnpm --filter @listenai/contracts typecheck && pnpm --filter @listenai/resource-manager typecheck && pnpm --filter @listenai/resource-client typecheck && pnpm --filter @listenai/skill-logic-analyzer typecheck",
+    "verify:s01": "bash scripts/verify-m004-s01.sh",
+    "verify:s02": "bash scripts/verify-m004-s02.sh",
+    "verify:s03": "bash scripts/verify-m004-s03.sh",
+    "verify:s04": "bash scripts/verify-m004-s04.sh",
     "verify:s05": "bash scripts/verify-s05.sh",
     "verify:s06": "bash scripts/verify-s06.sh",
     "verify:s07": "bash scripts/verify-s07.sh"
