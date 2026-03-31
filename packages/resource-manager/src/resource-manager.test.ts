@@ -14,11 +14,15 @@ import {
   INVENTORY_PROVIDER_KINDS,
   RELEASE_FAILURE_REASONS,
   FakeDeviceProvider,
+  createDslogicLiveCaptureRunner,
+  createLiveCaptureRequest,
   type AllocationFailure,
   type AllocationRequest,
   type AllocationResult,
+  type DeviceProvider,
   type DeviceRecord,
   type InventorySnapshot,
+  type LiveCaptureResult,
   type ReleaseFailure,
   type ReleaseRequest,
   type ReleaseResult,
@@ -185,9 +189,11 @@ describe("resource manager contract", () => {
     >();
 
     expectTypeOf<InventorySnapshot>().toMatchTypeOf<{
-      providerKind: string;
-      backendKind: string;
       refreshedAt: string;
+      inventoryScope: {
+        providerKinds: readonly string[];
+        backendKinds: readonly string[];
+      };
       devices: readonly DeviceRecord[];
       backendReadiness: readonly {
         platform: string;
@@ -216,9 +222,11 @@ describe("fake device provider snapshot seam", () => {
 
   it("preserves diagnostic-only snapshots when no devices are ready", async () => {
     const diagnosticOnlySnapshot: InventorySnapshot = {
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [],
       backendReadiness: [
         {
@@ -260,9 +268,11 @@ describe("fake device provider snapshot seam", () => {
 
   it("keeps degraded and unsupported DSLogic rows visible in the snapshot", async () => {
     const snapshot: InventorySnapshot = {
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [
         {
           deviceId: "logic-ready",
@@ -398,9 +408,11 @@ describe("fake device provider snapshot seam", () => {
     provider.setConnectedDevices([]);
 
     expect(await provider.listInventorySnapshot()).toEqual({
-      providerKind: "fake",
-      backendKind: "fake",
       refreshedAt: "1970-01-01T00:00:00.000Z",
+      inventoryScope: {
+        providerKinds: ["fake"],
+        backendKinds: ["fake"]
+      },
       devices: [],
       backendReadiness: [],
       diagnostics: []
@@ -690,11 +702,275 @@ describe("in-memory resource manager", () => {
     expect(await manager.listDevices()).toEqual([]);
   });
 
+  it("merges registered provider snapshots without collapsing canonical identities", async () => {
+    const dslogicSnapshot: InventorySnapshot = {
+      refreshedAt: connectedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
+      devices: [
+        {
+          deviceId: "logic-collision",
+          label: "DSLogic Collision",
+          capabilityType: "logic-analyzer",
+          connectionState: "connected",
+          allocationState: "free",
+          ownerSkillId: null,
+          lastSeenAt: connectedAt,
+          updatedAt: connectedAt,
+          readiness: "ready",
+          diagnostics: [
+            {
+              code: "backend-probe-timeout",
+              severity: "warning",
+              target: "device",
+              message: "DSLogic capture path is slow.",
+              deviceId: "logic-collision",
+              backendKind: "dsview"
+            }
+          ],
+          providerKind: "dslogic",
+          backendKind: "dsview",
+          canonicalIdentity: {
+            providerKind: "dslogic",
+            providerDeviceId: "collision-001",
+            canonicalKey: "dslogic:collision-001"
+          },
+          dslogic: null
+        }
+      ],
+      backendReadiness: [
+        {
+          platform: "macos",
+          backendKind: "dsview",
+          readiness: "degraded",
+          executablePath: "/Applications/DSView.app",
+          version: "2.0.0",
+          checkedAt: connectedAt,
+          diagnostics: [
+            {
+              code: "backend-probe-timeout",
+              severity: "warning",
+              target: "backend",
+              message: "DSView readiness probe exceeded the soft timeout.",
+              platform: "macos",
+              backendKind: "dsview"
+            }
+          ]
+        }
+      ],
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "backend",
+          message: "DSView readiness probe exceeded the soft timeout.",
+          platform: "macos",
+          backendKind: "dsview"
+        }
+      ]
+    };
+
+    const fakeSnapshot: InventorySnapshot = {
+      refreshedAt: connectedAt,
+      inventoryScope: {
+        providerKinds: ["fake"],
+        backendKinds: ["fake"]
+      },
+      devices: [
+        {
+          deviceId: "logic-collision",
+          label: "Fake Collision",
+          capabilityType: "logic-analyzer",
+          connectionState: "connected",
+          allocationState: "free",
+          ownerSkillId: null,
+          lastSeenAt: connectedAt,
+          updatedAt: connectedAt,
+          readiness: "degraded",
+          diagnostics: [
+            {
+              code: "backend-probe-timeout",
+              severity: "warning",
+              target: "device",
+              message: "Fake provider reported a slower probe.",
+              deviceId: "logic-collision",
+              backendKind: "fake"
+            }
+          ],
+          providerKind: "fake",
+          backendKind: "fake",
+          canonicalIdentity: {
+            providerKind: "fake",
+            providerDeviceId: "collision-001",
+            canonicalKey: "fake:collision-001"
+          },
+          dslogic: null
+        }
+      ],
+      backendReadiness: [
+        {
+          platform: "macos",
+          backendKind: "fake",
+          readiness: "ready",
+          executablePath: null,
+          version: null,
+          checkedAt: connectedAt,
+          diagnostics: []
+        }
+      ],
+      diagnostics: []
+    };
+
+    const manager = createResourceManager(
+      [
+        {
+          providerId: "dslogic-runtime",
+          provider: new FakeDeviceProvider(dslogicSnapshot)
+        },
+        {
+          providerId: "fake-runtime",
+          provider: new FakeDeviceProvider(fakeSnapshot)
+        }
+      ],
+      {
+        now: createClock(connectedAt)
+      }
+    );
+
+    const snapshot = await manager.refreshInventorySnapshot();
+
+    expect(snapshot.refreshedAt).toBe(connectedAt);
+    expect(snapshot.inventoryScope).toEqual({
+      providerKinds: ["dslogic", "fake"],
+      backendKinds: ["dsview", "fake"]
+    });
+    expect(snapshot.devices.map((device) => device.canonicalIdentity?.canonicalKey)).toEqual([
+      "dslogic:collision-001",
+      "fake:collision-001"
+    ]);
+    expect(snapshot.backendReadiness).toEqual([
+      ...dslogicSnapshot.backendReadiness,
+      ...fakeSnapshot.backendReadiness
+    ]);
+    expect(snapshot.diagnostics).toEqual(dslogicSnapshot.diagnostics);
+  });
+
+  it("keeps allocation ownership centralized across aggregated provider refreshes", async () => {
+    const dslogicProvider = new FakeDeviceProvider([
+      {
+        deviceId: "logic-1",
+        label: "DSLogic One",
+        capabilityType: "logic-analyzer",
+        lastSeenAt: connectedAt
+      }
+    ]);
+    const fakeProvider = new FakeDeviceProvider([
+      {
+        deviceId: "logic-2",
+        label: "Fake Two",
+        capabilityType: "logic-analyzer",
+        lastSeenAt: connectedAt
+      }
+    ]);
+    const manager = createResourceManager(
+      [
+        { providerId: "dslogic-runtime", provider: dslogicProvider },
+        { providerId: "fake-runtime", provider: fakeProvider }
+      ],
+      {
+        now: createClock(connectedAt, disconnectAt)
+      }
+    );
+
+    await manager.refreshInventorySnapshot();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocateAt
+    });
+
+    dslogicProvider.setInventorySnapshot({
+      refreshedAt: disconnectAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["fake"]
+      },
+      devices: [],
+      backendReadiness: [],
+      diagnostics: []
+    });
+
+    const refreshed = await manager.refreshInventory();
+
+    expect(refreshed).toEqual([
+      {
+        deviceId: "logic-1",
+        label: "DSLogic One",
+        capabilityType: "logic-analyzer",
+        connectionState: "disconnected",
+        allocationState: "allocated",
+        ownerSkillId: "skill-alpha",
+        lastSeenAt: connectedAt,
+        updatedAt: disconnectAt,
+        ...baseInventoryFields
+      },
+      {
+        deviceId: "logic-2",
+        label: "Fake Two",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: connectedAt,
+        updatedAt: disconnectAt,
+        ...baseInventoryFields
+      }
+    ]);
+
+    const release = await manager.releaseDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      releasedAt: releaseAt
+    });
+
+    expect(release).toEqual({
+      ok: true,
+      device: {
+        deviceId: "logic-1",
+        label: "DSLogic One",
+        capabilityType: "logic-analyzer",
+        connectionState: "disconnected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: connectedAt,
+        updatedAt: releaseAt,
+        ...baseInventoryFields
+      }
+    });
+    expect(await manager.listDevices()).toEqual([
+      {
+        deviceId: "logic-2",
+        label: "Fake Two",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: connectedAt,
+        updatedAt: disconnectAt,
+        ...baseInventoryFields
+      }
+    ]);
+  });
+
   it("preserves diagnostics and backend readiness in snapshot methods", async () => {
     const snapshot: InventorySnapshot = {
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt: connectedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [
         {
           deviceId: "logic-ready",
@@ -792,5 +1068,309 @@ describe("in-memory resource manager", () => {
     expect(await manager.listDevices()).toEqual(snapshot.devices);
     expect(await manager.getInventorySnapshot()).toEqual(snapshot);
     expect(await manager.refreshInventorySnapshot()).toEqual(snapshot);
+  });
+});
+
+
+describe("in-memory resource manager live capture dispatch", () => {
+  const refreshedAt = "2026-03-30T10:00:00.000Z";
+  const requestedAt = "2026-03-30T10:00:05.000Z";
+  const allocatedAt = "2026-03-30T10:00:06.000Z";
+
+  const createDslogicSnapshot = (): InventorySnapshot => ({
+    refreshedAt,
+    inventoryScope: {
+      providerKinds: ["dslogic"],
+      backendKinds: ["dsview"]
+    },
+    devices: [
+      {
+        deviceId: "logic-1",
+        label: "DSLogic Plus",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: refreshedAt,
+        updatedAt: refreshedAt,
+        readiness: "ready",
+        diagnostics: [],
+        providerKind: "dslogic",
+        backendKind: "dsview",
+        dslogic: {
+          family: "dslogic",
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic Plus",
+          variant: "classic",
+          usbVendorId: "2a0e",
+          usbProductId: "0001"
+        }
+      }
+    ],
+    backendReadiness: [
+      {
+        platform: "macos",
+        backendKind: "dsview",
+        readiness: "ready",
+        executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
+        version: "1.3.1",
+        checkedAt: refreshedAt,
+        diagnostics: []
+      }
+    ],
+    diagnostics: []
+  });
+
+  const createAcceptedRequest = (snapshot: InventorySnapshot) =>
+    createLiveCaptureRequest(
+      {
+        sessionId: "session-1",
+        deviceId: "logic-1",
+        ownerSkillId: "skill-alpha",
+        startedAt: refreshedAt,
+        device: {
+          ...snapshot.devices[0]!,
+          allocationState: "free",
+          ownerSkillId: null
+        },
+        sampling: {
+          sampleRateHz: 1_000_000,
+          captureDurationMs: 10,
+          channels: [
+            {
+              channelId: "D0",
+              label: "Channel 0"
+            },
+            {
+              channelId: "D1",
+              label: "Channel 1"
+            }
+          ]
+        }
+      },
+      {
+        requestedAt
+      }
+    );
+
+  it("delegates live capture through a provider-dispatched seam", async () => {
+    const snapshot = createDslogicSnapshot();
+    let capturedRequest = null as Parameters<
+      NonNullable<SnapshotResourceManager["liveCapture"]>
+    >[0] | null;
+    const provider: DeviceProvider = {
+      async listInventorySnapshot() {
+        return snapshot;
+      },
+      async listConnectedDevices() {
+        return [];
+      },
+      liveCapture: {
+        supportsDevice(device: DeviceRecord) {
+          return device.providerKind === "dslogic" && device.backendKind === "dsview";
+        },
+        async liveCapture(
+          request: Parameters<NonNullable<SnapshotResourceManager["liveCapture"]>>[0]
+        ): Promise<LiveCaptureResult> {
+          capturedRequest = request;
+          return {
+            ok: true,
+            providerKind: "dslogic",
+            backendKind: "dsview",
+            session: request.session,
+            requestedAt: request.requestedAt,
+            artifact: {
+              sourceName: "logic-1.csv",
+              formatHint: "sigrok-csv",
+              mediaType: "text/csv",
+              text: "Time [us],D0,D1\n0,0,1\n"
+            },
+            artifactSummary: {
+              sourceName: "logic-1.csv",
+              formatHint: "sigrok-csv",
+              mediaType: "text/csv",
+              capturedAt: null,
+              byteLength: null,
+              textLength: 24,
+              hasText: true
+            }
+          };
+        }
+      }
+    };
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request = createAcceptedRequest(snapshot);
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    const result = await manager.liveCapture(request);
+
+    expect(result).toMatchObject({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview"
+    });
+    expect(capturedRequest?.session.device.allocationState).toBe("allocated");
+    expect(capturedRequest?.session.device.ownerSkillId).toBe("skill-alpha");
+    expect(capturedRequest?.session.device.updatedAt).toBe(allocatedAt);
+  });
+
+  it("names the responsible provider and backend when no live-capture handler is registered", async () => {
+    const snapshot = createDslogicSnapshot();
+    const provider = new FakeDeviceProvider(snapshot);
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request = createAcceptedRequest(snapshot);
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    const result = await manager.liveCapture(request);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "capture-failed",
+      kind: "unsupported-runtime",
+      diagnostics: {
+        phase: "validate-session",
+        providerKind: "dslogic",
+        backendKind: "dsview"
+      }
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("provider dslogic");
+      expect(result.message).toContain("backend dsview");
+      expect(result.diagnostics.details).toEqual([
+        "No registered live-capture provider accepted provider dslogic.",
+        "No registered live-capture provider accepted backend dsview.",
+        "Configure a provider-specific live-capture handler for the authoritative device runtime."
+      ]);
+    }
+  });
+
+  it("returns an explicit unsupported-runtime failure for fake-provider capture requests", async () => {
+    const snapshot: InventorySnapshot = {
+      refreshedAt,
+      inventoryScope: {
+        providerKinds: ["fake"],
+        backendKinds: ["fake"]
+      },
+      devices: [
+        {
+          deviceId: "fake-1",
+          label: "Fake logic analyzer",
+          capabilityType: "logic-analyzer",
+          connectionState: "connected",
+          allocationState: "free",
+          ownerSkillId: null,
+          lastSeenAt: refreshedAt,
+          updatedAt: refreshedAt,
+          readiness: "ready",
+          diagnostics: [],
+          providerKind: "fake",
+          backendKind: "fake",
+          dslogic: null
+        }
+      ],
+      backendReadiness: [],
+      diagnostics: []
+    };
+    const provider = new FakeDeviceProvider(snapshot);
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request = createLiveCaptureRequest(
+      {
+        sessionId: "session-fake-1",
+        deviceId: "fake-1",
+        ownerSkillId: "skill-alpha",
+        startedAt: refreshedAt,
+        device: {
+          ...snapshot.devices[0]!,
+          allocationState: "free",
+          ownerSkillId: null
+        },
+        sampling: {
+          sampleRateHz: 1_000_000,
+          captureDurationMs: 10,
+          channels: [
+            {
+              channelId: "D0",
+              label: "Channel 0"
+            }
+          ]
+        }
+      },
+      {
+        requestedAt
+      }
+    );
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "fake-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    await expect(manager.liveCapture(request)).resolves.toMatchObject({
+      ok: false,
+      reason: "capture-failed",
+      kind: "unsupported-runtime",
+      message: "Live capture is not supported by the fake provider/backend.",
+      diagnostics: {
+        phase: "validate-session",
+        providerKind: "fake",
+        backendKind: "fake",
+        details: [
+          "Fake provider inventory can drive allocation flows but does not implement live capture.",
+          "Use the DSLogic provider/backend to exercise real live capture."
+        ]
+      }
+    });
+  });
+
+  it("keeps the legacy DSLogic runner option working through the provider seam", async () => {
+    const snapshot = createDslogicSnapshot();
+    const provider = new FakeDeviceProvider(snapshot);
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt,
+      liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
+        ok: true,
+        artifact: {
+          sourceName: "logic-1.csv",
+          formatHint: "sigrok-csv",
+          mediaType: "text/csv",
+          text: "Time [us],D0,D1\n0,0,1\n"
+        }
+      }))
+    });
+    const request = createAcceptedRequest(snapshot);
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    await expect(manager.liveCapture(request)).resolves.toMatchObject({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview"
+    });
   });
 });

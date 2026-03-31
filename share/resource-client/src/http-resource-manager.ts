@@ -239,24 +239,39 @@ const parseBackendReadinessRecord = (
   };
 };
 
-const parseDeviceRecordArray = (value: unknown, path: string): DeviceRecord[] =>
-  readStringArrayField(value, path, parseDeviceRecord);
+const parseDeviceRecordArray = (
+  value: unknown,
+  path: string,
+): DeviceRecord[] => readStringArrayField(value, path, parseDeviceRecord);
+
+const parseRootDeviceRecordArray = (value: unknown): DeviceRecord[] =>
+  parseDeviceRecordArray(value, "root");
 
 const parseInventorySnapshot = (value: unknown): InventorySnapshot => {
   if (!isObject(value)) {
     throw new Error("Malformed inventory snapshot response at root");
   }
 
+  if (!isObject(value.inventoryScope)) {
+    throw new Error("Malformed inventory snapshot response at root.inventoryScope");
+  }
+
   return {
-    providerKind: readString(
-      value.providerKind,
-      "root.providerKind",
-    ) as InventorySnapshot["providerKind"],
-    backendKind: readString(
-      value.backendKind,
-      "root.backendKind",
-    ) as InventorySnapshot["backendKind"],
     refreshedAt: readString(value.refreshedAt, "root.refreshedAt") as string,
+    inventoryScope: {
+      providerKinds: readStringArrayField(
+        value.inventoryScope.providerKinds,
+        "root.inventoryScope.providerKinds",
+        (entry, entryPath) =>
+          readString(entry, entryPath) as InventorySnapshot["inventoryScope"]["providerKinds"][number],
+      ),
+      backendKinds: readStringArrayField(
+        value.inventoryScope.backendKinds,
+        "root.inventoryScope.backendKinds",
+        (entry, entryPath) =>
+          readString(entry, entryPath) as InventorySnapshot["inventoryScope"]["backendKinds"][number],
+      ),
+    },
     devices: parseDeviceRecordArray(value.devices, "root.devices"),
     backendReadiness: readStringArrayField(
       value.backendReadiness,
@@ -552,15 +567,17 @@ export class HttpResourceManager implements SnapshotResourceManager {
   }
 
   async listDevices(): Promise<readonly DeviceRecord[]> {
-    return this.#requestJson(`${this.#baseUrl}/devices`, parseDeviceRecordArray, undefined, "root");
+    return this.#requestJson(
+      `${this.#baseUrl}/devices`,
+      parseRootDeviceRecordArray,
+    );
   }
 
   async refreshInventory(): Promise<readonly DeviceRecord[]> {
     return this.#requestJson(
       `${this.#baseUrl}/refresh`,
-      parseDeviceRecordArray,
+      parseRootDeviceRecordArray,
       { method: "POST" },
-      "root",
     );
   }
 
@@ -690,13 +707,12 @@ export class HttpResourceManager implements SnapshotResourceManager {
 
   async #requestJson<T>(
     url: string,
-    parser: (value: unknown, path?: string) => T,
+    parser: (value: unknown) => T,
     init?: RequestInit,
-    path?: string,
   ): Promise<T> {
     const res = await this.#fetch(url, init);
     const body = await res.json();
-    return parser(body, path);
+    return parser(body);
   }
 
   async #fetch(url: string, init?: RequestInit): Promise<Response> {

@@ -526,6 +526,18 @@ function pluralize(count, singular, plural = singular + "s") {
   return count === 1 ? singular : plural;
 }
 
+function summarizeScope(prefix, kinds, emptyLabel) {
+  if (!Array.isArray(kinds) || kinds.length === 0) {
+    return prefix + ' ' + emptyLabel;
+  }
+
+  if (kinds.length === 1) {
+    return prefix + ' ' + kinds[0];
+  }
+
+  return prefix + ' ' + kinds.join(' + ');
+}
+
 function setStreamStatus(state, message) {
   streamStatus.dataset.state = state;
   streamStatus.textContent = message;
@@ -616,7 +628,9 @@ function summarizeSystemStatus(snapshot) {
   const unavailableOrAbnormal = snapshot.devices.filter((device) => {
     return device.readinessBadge !== 'ready' || leaseAttentionStates.has(device.occupancyState);
   }).length;
-  const usesSimulatedProvider = snapshot.providerKind === 'fake' || snapshot.backendKind === 'fake';
+  const providerKinds = snapshot.inventoryScope?.providerKinds ?? [];
+  const backendKinds = snapshot.inventoryScope?.backendKinds ?? [];
+  const usesSimulatedProvider = providerKinds.includes('fake') || backendKinds.includes('fake');
   const missingBackendTelemetry = snapshot.backendReadiness.length === 0;
 
   if (snapshot.overview.backendMissing > 0 || snapshot.overview.backendUnsupported > 0) {
@@ -961,8 +975,8 @@ function applySnapshot(snapshot, sourceLabel) {
   systemStatusPill.dataset.state = system.tone;
   systemStatusPill.textContent = system.label;
   systemStatusSummary.textContent = system.summary;
-  providerSummary.textContent = 'Provider ' + snapshot.providerKind;
-  backendSummary.textContent = 'Backend ' + snapshot.backendKind;
+  providerSummary.textContent = summarizeScope('Provider', snapshot.inventoryScope?.providerKinds, 'unknown');
+  backendSummary.textContent = summarizeScope('Backend', snapshot.inventoryScope?.backendKinds, 'unknown');
 }
 
 async function loadSnapshot(sourceLabel = 'Updated') {

@@ -81,9 +81,11 @@ const unsupportedPangoDevice: DeviceRecord = {
 };
 
 const mixedDslogicSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: "2026-03-30T10:00:00.000Z",
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["dsview"],
+  },
   devices: [readyClassicDevice, unsupportedPangoDevice],
   backendReadiness: [
     {
@@ -100,9 +102,11 @@ const mixedDslogicSnapshot: InventorySnapshot = {
 };
 
 const backendMissingSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: "2026-03-30T10:00:00.000Z",
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["dsview"],
+  },
   devices: [],
   backendReadiness: [
     {

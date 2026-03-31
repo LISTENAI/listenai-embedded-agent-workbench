@@ -93,6 +93,17 @@ export interface DslogicDeviceIdentity {
   usbProductId: string | null;
 }
 
+export interface CanonicalDeviceIdentity {
+  providerKind: InventoryProviderKind;
+  providerDeviceId: string;
+  canonicalKey: string;
+}
+
+export interface InventoryScope {
+  providerKinds: readonly InventoryProviderKind[];
+  backendKinds: readonly InventoryBackendKind[];
+}
+
 export interface BackendReadinessRecord {
   platform: InventoryPlatform;
   backendKind: InventoryBackendKind;
@@ -116,13 +127,13 @@ export interface DeviceRecord {
   diagnostics?: readonly InventoryDiagnostic[];
   providerKind?: InventoryProviderKind;
   backendKind?: InventoryBackendKind;
+  canonicalIdentity?: CanonicalDeviceIdentity;
   dslogic?: DslogicDeviceIdentity | null;
 }
 
 export interface InventorySnapshot {
-  providerKind: InventoryProviderKind;
-  backendKind: InventoryBackendKind;
   refreshedAt: string;
+  inventoryScope: InventoryScope;
   devices: readonly DeviceRecord[];
   backendReadiness: readonly BackendReadinessRecord[];
   diagnostics: readonly InventoryDiagnostic[];
@@ -237,6 +248,7 @@ export interface DashboardDeviceRow {
   diagnostics: readonly InventoryDiagnostic[];
   providerKind?: InventoryProviderKind;
   backendKind?: InventoryBackendKind;
+  canonicalIdentity?: CanonicalDeviceIdentity;
 }
 
 export interface DashboardOverview {
@@ -261,8 +273,7 @@ export interface DashboardOverview {
 
 export interface DashboardSnapshot {
   generatedAt: string;
-  providerKind: InventoryProviderKind;
-  backendKind: InventoryBackendKind;
+  inventoryScope: InventoryScope;
   overview: DashboardOverview;
   backendReadiness: readonly BackendReadinessRecord[];
   devices: readonly DashboardDeviceRow[];

@@ -43,7 +43,10 @@ If the baseline passes and you need higher-confidence follow-up diagnostics, run
 ```bash
 pnpm run verify:s06
 pnpm run verify:s07
+pnpm run verify:m008:s04
 ```
+
+`verify:m008:s04` is the current top-level assembled seam for the multi-provider runtime baseline. It reruns the focused S01/S02/S03 proof groups so canonical identity, aggregated `inventoryScope` metadata, dashboard truth, and provider-dispatched live capture stay aligned from the repository root.
 
 Treat these as deeper diagnostics rather than the default path for every change. Contributor expectations and repo-specific verification details live in `CONTRIBUTING.md`; Chinese readers can use `CONTRIBUTING.zh-CN.md`.
 
@@ -59,4 +62,6 @@ For advanced manual runtime checks, the packaged resource-manager CLI entrypoint
 
 ## Repository focus right now
 
-The current milestone is about making the existing workspace understandable and verifiable as a source repository. If you are browsing the repo for the first time, start with the workspace-owned packages above, then use the root verification commands to confirm the documented story matches local reality.
+M008 establishes the current multi-provider control-plane baseline: the packaged resource-manager, dashboard, and skill-driven HTTP workflow now preserve provider-scoped canonical identity across mixed providers without falling back to a fake single-provider story. If you are browsing the repo for the first time, start with the workspace-owned packages above, then use the root verification commands to confirm the documented story matches local reality.
+
+M009 is the follow-on milestone for replacing the DSLogic compatibility adapter with a native DSLogic runtime boundary. Until that lands, treat the current provider-dispatched seam plus `pnpm run verify:m008:s04` as the authoritative closeout path.

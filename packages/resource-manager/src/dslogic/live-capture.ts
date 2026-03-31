@@ -1,5 +1,7 @@
 import type {
+  DeviceRecord,
   LiveCaptureArtifact,
+  LiveCaptureArtifactSummary,
   LiveCaptureFailure,
   LiveCaptureFailureDiagnostics,
   LiveCaptureFailureKind,
@@ -10,7 +12,7 @@ import type {
   LiveCaptureSession,
   LiveCaptureSuccess
 } from "@listenai/contracts";
-import { summarizeLiveCaptureArtifact } from "@listenai/contracts";
+import type { LiveCaptureProvider } from "../device-provider.js";
 import {
   DSLOGIC_BACKEND_KIND,
   DSLOGIC_PROVIDER_KIND
@@ -131,6 +133,18 @@ const hasUsableArtifactPayload = (artifact: LiveCaptureArtifact): boolean => {
   return hasText || hasBytes;
 };
 
+const summarizeArtifact = (
+  artifact: LiveCaptureArtifact
+): LiveCaptureArtifactSummary => ({
+  sourceName: artifact.sourceName ?? null,
+  formatHint: artifact.formatHint ?? null,
+  mediaType: artifact.mediaType ?? null,
+  capturedAt: artifact.capturedAt ?? null,
+  byteLength: artifact.bytes?.byteLength ?? null,
+  textLength: typeof artifact.text === "string" ? artifact.text.length : null,
+  hasText: typeof artifact.text === "string"
+});
+
 const buildFailure = (
   request: LiveCaptureRequest,
   kind: LiveCaptureFailureKind,
@@ -220,7 +234,7 @@ const toSuccess = (
   session: request.session,
   requestedAt: request.requestedAt,
   artifact,
-  artifactSummary: summarizeLiveCaptureArtifact(artifact)
+  artifactSummary: summarizeArtifact(artifact)
 });
 
 const toFailureFromRunner = (
@@ -263,7 +277,7 @@ export const captureDslogicLive = async (
         command: runnerResult.command ?? [],
         stdout: summarizeRunnerStream(runnerResult.stdout),
         stderr: summarizeRunnerStream(runnerResult.stderr),
-        artifactSummary: summarizeLiveCaptureArtifact(runnerResult.artifact),
+        artifactSummary: summarizeArtifact(runnerResult.artifact),
         details: [
           "Expected artifact.text or artifact.bytes to contain non-empty capture data."
         ]
@@ -273,6 +287,19 @@ export const captureDslogicLive = async (
 
   return toSuccess(request, runnerResult.artifact);
 };
+
+export const supportsDslogicLiveCapture = (
+  device: Pick<DeviceRecord, "providerKind" | "backendKind">
+): boolean =>
+  device.providerKind === DSLOGIC_PROVIDER_KIND &&
+  device.backendKind === DSLOGIC_BACKEND_KIND;
+
+export const createDslogicLiveCaptureProvider = (
+  runner: DslogicLiveCaptureRunner
+): LiveCaptureProvider => ({
+  supportsDevice: supportsDslogicLiveCapture,
+  liveCapture: (request) => captureDslogicLive(request, { runner })
+});
 
 export const createDslogicLiveCaptureRunner = (
   run: DslogicLiveCaptureRunner["run"]

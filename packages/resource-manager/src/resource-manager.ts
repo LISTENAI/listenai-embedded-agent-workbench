@@ -11,11 +11,19 @@ import type {
   ReleaseResult,
   SnapshotResourceManager
 } from "@listenai/contracts";
-import { captureDslogicLive } from "./dslogic/live-capture.js";
-import type {
-  DslogicLiveCaptureRunner
+import {
+  createDslogicLiveCaptureProvider,
+  type DslogicLiveCaptureRunner
 } from "./dslogic/live-capture.js";
-import type { DeviceProvider } from "./device-provider.js";
+import type {
+  DeviceProviderInput,
+  LiveCaptureProvider,
+  RegisteredDeviceProvider
+} from "./device-provider.js";
+import {
+  isLiveCaptureProvider,
+  normalizeDeviceProviders
+} from "./device-provider.js";
 
 export type { ResourceManager, SnapshotResourceManager } from "@listenai/contracts";
 
@@ -30,9 +38,11 @@ interface AllocationStateSnapshot {
 }
 
 const EMPTY_SNAPSHOT: InventorySnapshot = {
-  providerKind: "fake",
-  backendKind: "fake",
   refreshedAt: "1970-01-01T00:00:00.000Z",
+  inventoryScope: {
+    providerKinds: ["fake"],
+    backendKinds: ["fake"]
+  },
   devices: [],
   backendReadiness: [],
   diagnostics: []
@@ -66,6 +76,52 @@ const buildAuthoritativeSessionFailure = (
   }
 });
 
+const buildUnsupportedProviderFailure = (
+  request: LiveCaptureRequest,
+  message: string,
+  details: readonly string[]
+): LiveCaptureFailure => ({
+  ok: false,
+  reason: "capture-failed",
+  kind: "unsupported-runtime",
+  message,
+  session: request.session,
+  requestedAt: request.requestedAt,
+  artifactSummary: null,
+  diagnostics: {
+    phase: "validate-session",
+    providerKind: request.session.device.providerKind ?? null,
+    backendKind: request.session.device.backendKind ?? null,
+    executablePath: null,
+    command: [],
+    timeoutMs: request.timeoutMs ?? null,
+    exitCode: null,
+    signal: null,
+    stdout: null,
+    stderr: null,
+    details,
+    diagnostics: request.session.device.diagnostics ?? []
+  }
+});
+
+const collectLiveCaptureProviders = (
+  providers: readonly RegisteredDeviceProvider[],
+  legacyLiveCaptureRunner?: DslogicLiveCaptureRunner
+): readonly LiveCaptureProvider[] => {
+  const dispatchProviders = providers.flatMap(({ provider }) =>
+    isLiveCaptureProvider(provider.liveCapture) ? [provider.liveCapture] : []
+  );
+
+  if (!legacyLiveCaptureRunner) {
+    return dispatchProviders;
+  }
+
+  return [
+    ...dispatchProviders,
+    createDslogicLiveCaptureProvider(legacyLiveCaptureRunner)
+  ];
+};
+
 const cloneDiagnostic = (
   diagnostic: InventoryDiagnostic
 ): InventoryDiagnostic => ({ ...diagnostic });
@@ -73,11 +129,18 @@ const cloneDiagnostic = (
 const cloneRecord = (record: DeviceRecord): DeviceRecord => ({
   ...record,
   diagnostics: record.diagnostics?.map(cloneDiagnostic),
+  canonicalIdentity: record.canonicalIdentity
+    ? { ...record.canonicalIdentity }
+    : record.canonicalIdentity,
   dslogic: record.dslogic ? { ...record.dslogic } : record.dslogic
 });
 
 const cloneSnapshot = (snapshot: InventorySnapshot): InventorySnapshot => ({
   ...snapshot,
+  inventoryScope: {
+    providerKinds: [...snapshot.inventoryScope.providerKinds],
+    backendKinds: [...snapshot.inventoryScope.backendKinds]
+  },
   devices: snapshot.devices.map(cloneRecord),
   backendReadiness: snapshot.backendReadiness.map((record) => ({
     ...record,
@@ -86,10 +149,64 @@ const cloneSnapshot = (snapshot: InventorySnapshot): InventorySnapshot => ({
   diagnostics: snapshot.diagnostics.map(cloneDiagnostic)
 });
 
+const appendUnique = <T extends string>(target: T[], values: readonly T[]): void => {
+  for (const value of values) {
+    if (!target.includes(value)) {
+      target.push(value);
+    }
+  }
+};
+
+const mergeProviderSnapshots = (
+  snapshots: readonly InventorySnapshot[]
+): InventorySnapshot => {
+  if (snapshots.length === 0) {
+    return cloneSnapshot(EMPTY_SNAPSHOT);
+  }
+
+  const providerKinds: Array<InventorySnapshot["inventoryScope"]["providerKinds"][number]> = [];
+  const backendKinds: Array<InventorySnapshot["inventoryScope"]["backendKinds"][number]> = [];
+  const devices: DeviceRecord[] = [];
+  const backendReadiness: Array<InventorySnapshot["backendReadiness"][number]> = [];
+  const diagnostics: Array<InventorySnapshot["diagnostics"][number]> = [];
+
+  for (const snapshot of snapshots) {
+    appendUnique(providerKinds, snapshot.inventoryScope.providerKinds);
+    appendUnique(backendKinds, snapshot.inventoryScope.backendKinds);
+    devices.push(...snapshot.devices.map(cloneRecord));
+    backendReadiness.push(
+      ...snapshot.backendReadiness.map((record) => ({
+        ...record,
+        diagnostics: record.diagnostics.map(cloneDiagnostic)
+      }))
+    );
+    diagnostics.push(...snapshot.diagnostics.map(cloneDiagnostic));
+  }
+
+  return {
+    refreshedAt: snapshots[snapshots.length - 1]?.refreshedAt ?? EMPTY_SNAPSHOT.refreshedAt,
+    inventoryScope: {
+      providerKinds,
+      backendKinds
+    },
+    devices,
+    backendReadiness,
+    diagnostics
+  };
+};
+
 const sortDevices = (devices: Iterable<DeviceRecord>): DeviceRecord[] =>
-  Array.from(devices, cloneRecord).sort((left, right) =>
-    left.deviceId.localeCompare(right.deviceId)
-  );
+  Array.from(devices, cloneRecord).sort((left, right) => {
+    const byDeviceId = left.deviceId.localeCompare(right.deviceId);
+    if (byDeviceId !== 0) {
+      return byDeviceId;
+    }
+
+    return getDeviceStorageKey(left).localeCompare(getDeviceStorageKey(right));
+  });
+
+const getDeviceStorageKey = (record: DeviceRecord): string =>
+  record.canonicalIdentity?.canonicalKey ?? record.deviceId;
 
 const setAllocationState = (
   record: DeviceRecord,
@@ -112,16 +229,19 @@ const createDisconnectedAllocatedRecord = (
   setAllocationState(record, allocation, updatedAt, "disconnected");
 
 export class InMemoryResourceManager implements SnapshotResourceManager {
-  readonly #provider: DeviceProvider;
+  readonly #providers: readonly RegisteredDeviceProvider[];
   readonly #now: () => string;
-  readonly #liveCaptureRunner?: DslogicLiveCaptureRunner;
+  readonly #liveCaptureProviders: readonly LiveCaptureProvider[];
   readonly #allocations = new Map<string, AllocationStateSnapshot>();
   #snapshot: InventorySnapshot = cloneSnapshot(EMPTY_SNAPSHOT);
 
-  constructor(provider: DeviceProvider, options: ResourceManagerOptions = {}) {
-    this.#provider = provider;
+  constructor(providers: DeviceProviderInput, options: ResourceManagerOptions = {}) {
+    this.#providers = normalizeDeviceProviders(providers);
     this.#now = options.now ?? (() => new Date().toISOString());
-    this.#liveCaptureRunner = options.liveCaptureRunner;
+    this.#liveCaptureProviders = collectLiveCaptureProviders(
+      this.#providers,
+      options.liveCaptureRunner
+    );
   }
 
   async refreshInventory(): Promise<readonly DeviceRecord[]> {
@@ -130,30 +250,34 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
   }
 
   async refreshInventorySnapshot(): Promise<InventorySnapshot> {
-    const providerSnapshot = cloneSnapshot(await this.#provider.listInventorySnapshot());
+    const providerSnapshots = await Promise.all(
+      this.#providers.map(({ provider }) => provider.listInventorySnapshot().then(cloneSnapshot))
+    );
+    const providerSnapshot = mergeProviderSnapshots(providerSnapshots);
     const updatedAt = this.#now();
     const nextDevices = new Map<string, DeviceRecord>();
 
     for (const discovered of providerSnapshot.devices) {
       const allocation = this.#allocations.get(discovered.deviceId);
       nextDevices.set(
-        discovered.deviceId,
+        getDeviceStorageKey(discovered),
         setAllocationState(discovered, allocation, updatedAt)
       );
     }
 
     for (const [deviceId, allocation] of this.#allocations) {
-      if (nextDevices.has(deviceId)) {
-        continue;
-      }
-
       const previousRecord = this.#findStoredDevice(deviceId);
       if (!previousRecord) {
         continue;
       }
 
+      const storageKey = getDeviceStorageKey(previousRecord);
+      if (nextDevices.has(storageKey)) {
+        continue;
+      }
+
       nextDevices.set(
-        deviceId,
+        storageKey,
         createDisconnectedAllocatedRecord(previousRecord, allocation, updatedAt)
       );
     }
@@ -320,28 +444,30 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
       );
     }
 
-    if (!this.#liveCaptureRunner) {
-      return buildAuthoritativeSessionFailure(
-        request,
-        "Live capture runner is not configured for the resource manager.",
+    const dispatchedRequest: LiveCaptureRequest = {
+      ...request,
+      session: {
+        ...request.session,
+        device: cloneRecord(authoritativeDevice)
+      }
+    };
+    const liveCaptureProvider = this.#liveCaptureProviders.find((provider) =>
+      provider.supportsDevice(authoritativeDevice)
+    );
+
+    if (!liveCaptureProvider) {
+      return buildUnsupportedProviderFailure(
+        dispatchedRequest,
+        `Live capture is not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
         [
-          "Provide ResourceManagerOptions.liveCaptureRunner when constructing the in-memory manager."
+          `No registered live-capture provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
+          `No registered live-capture provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+          "Configure a provider-specific live-capture handler for the authoritative device runtime."
         ]
       );
     }
 
-    return captureDslogicLive(
-      {
-        ...request,
-        session: {
-          ...request.session,
-          device: cloneRecord(authoritativeDevice)
-        }
-      },
-      {
-        runner: this.#liveCaptureRunner
-      }
-    );
+    return liveCaptureProvider.liveCapture(dispatchedRequest);
   }
 
   #findStoredDevice(deviceId: string): DeviceRecord | undefined {
@@ -349,8 +475,9 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
   }
 
   #setStoredDevice(record: DeviceRecord): void {
+    const storageKey = getDeviceStorageKey(record);
     const nextDevices = this.#snapshot.devices.filter(
-      (candidate) => candidate.deviceId !== record.deviceId
+      (candidate) => getDeviceStorageKey(candidate) !== storageKey
     );
     nextDevices.push(cloneRecord(record));
     this.#snapshot = {
@@ -368,6 +495,6 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
 }
 
 export const createResourceManager = (
-  provider: DeviceProvider,
+  providers: DeviceProviderInput,
   options?: ResourceManagerOptions
-): SnapshotResourceManager => new InMemoryResourceManager(provider, options);
+): SnapshotResourceManager => new InMemoryResourceManager(providers, options);

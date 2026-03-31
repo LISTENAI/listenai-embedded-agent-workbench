@@ -10,9 +10,11 @@ const refreshedAt = "2026-03-31T04:00:00.000Z";
 const nowMs = Date.parse("2026-03-31T04:00:20.000Z");
 
 const inventory: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic", "fake"],
+    backendKinds: ["dsview", "fake"]
+  },
   devices: [
     {
       deviceId: "device-b",
@@ -36,6 +38,11 @@ const inventory: InventorySnapshot = {
       ],
       providerKind: "dslogic",
       backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-b",
+        canonicalKey: "dslogic:device-b"
+      },
       dslogic: null
     },
     {
@@ -51,6 +58,11 @@ const inventory: InventorySnapshot = {
       diagnostics: [],
       providerKind: "dslogic",
       backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-a",
+        canonicalKey: "dslogic:device-a"
+      },
       dslogic: null
     },
     {
@@ -66,6 +78,11 @@ const inventory: InventorySnapshot = {
       diagnostics: [],
       providerKind: "dslogic",
       backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-c",
+        canonicalKey: "dslogic:device-c"
+      },
       dslogic: null
     },
     {
@@ -90,6 +107,11 @@ const inventory: InventorySnapshot = {
       ],
       providerKind: "dslogic",
       backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-d",
+        canonicalKey: "dslogic:device-d"
+      },
       dslogic: null
     }
   ],
@@ -143,6 +165,113 @@ const inventory: InventorySnapshot = {
   ]
 };
 
+const mixedProviderCollisionInventory: InventorySnapshot = {
+  refreshedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic", "fake"],
+    backendKinds: ["dsview", "fake"]
+  },
+  devices: [
+    {
+      deviceId: "collision-device",
+      label: "DSLogic Collision Device",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: refreshedAt,
+      updatedAt: refreshedAt,
+      readiness: "ready",
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "device",
+          message: "DSLogic path is slow.",
+          deviceId: "collision-device",
+          backendKind: "dsview"
+        }
+      ],
+      providerKind: "dslogic",
+      backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "collision-device",
+        canonicalKey: "dslogic:collision-device"
+      },
+      dslogic: null
+    },
+    {
+      deviceId: "collision-device",
+      label: "Fake Collision Device",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: refreshedAt,
+      updatedAt: refreshedAt,
+      readiness: "degraded",
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "device",
+          message: "Fake backend path is slow.",
+          deviceId: "collision-device",
+          backendKind: "fake"
+        }
+      ],
+      providerKind: "fake",
+      backendKind: "fake",
+      canonicalIdentity: {
+        providerKind: "fake",
+        providerDeviceId: "collision-device",
+        canonicalKey: "fake:collision-device"
+      },
+      dslogic: null
+    }
+  ],
+  backendReadiness: [
+    {
+      platform: "macos",
+      backendKind: "dsview",
+      readiness: "degraded",
+      executablePath: "/Applications/DSView.app",
+      version: "2.0.0",
+      checkedAt: refreshedAt,
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "backend",
+          message: "DSView readiness probe exceeded the soft timeout.",
+          platform: "macos",
+          backendKind: "dsview"
+        }
+      ]
+    },
+    {
+      platform: "macos",
+      backendKind: "fake",
+      readiness: "ready",
+      executablePath: null,
+      version: null,
+      checkedAt: refreshedAt,
+      diagnostics: []
+    }
+  ],
+  diagnostics: [
+    {
+      code: "backend-probe-timeout",
+      severity: "warning",
+      target: "backend",
+      message: "DSView readiness probe exceeded the soft timeout.",
+      platform: "macos",
+      backendKind: "dsview"
+    }
+  ]
+};
+
 const leases: LeaseInfo[] = [
   {
     leaseId: "lease-a",
@@ -181,8 +310,70 @@ const buildSnapshot = (): DashboardSnapshot =>
   );
 
 describe("createDashboardSnapshot", () => {
+
+  it("keeps similarly named devices distinct by canonical identity and preserves backend diagnostics", () => {
+    const snapshot = createDashboardSnapshot(
+      mixedProviderCollisionInventory,
+      {
+        getAllLeases: () => [],
+        getTimeoutMs: () => 30000
+      },
+      { now: () => nowMs }
+    );
+
+    expect(snapshot.inventoryScope).toEqual({
+      providerKinds: ["dslogic", "fake"],
+      backendKinds: ["dsview", "fake"]
+    });
+    expect(snapshot.devices).toHaveLength(2);
+    expect(snapshot.devices.map((device) => device.deviceId)).toEqual([
+      "collision-device",
+      "collision-device"
+    ]);
+    expect(snapshot.devices.map((device) => device.canonicalIdentity?.canonicalKey)).toEqual([
+      "dslogic:collision-device",
+      "fake:collision-device"
+    ]);
+    expect(snapshot.devices.map((device) => device.backendKind)).toEqual([
+      "dsview",
+      "fake"
+    ]);
+    expect(snapshot.devices.map((device) => device.diagnostics)).toEqual([
+      [
+        expect.objectContaining({
+          backendKind: "dsview",
+          message: "DSLogic path is slow."
+        })
+      ],
+      [
+        expect.objectContaining({
+          backendKind: "fake",
+          message: "Fake backend path is slow."
+        })
+      ]
+    ]);
+    expect(snapshot.backendReadiness).toEqual(mixedProviderCollisionInventory.backendReadiness);
+    expect(snapshot.diagnostics).toEqual(mixedProviderCollisionInventory.diagnostics);
+    expect(snapshot.overview).toEqual(
+      expect.objectContaining({
+        totalDevices: 2,
+        readyDevices: 1,
+        degradedDevices: 1,
+        backendReady: 1,
+        backendDegraded: 1,
+        backendMissing: 0,
+        backendUnsupported: 0
+      })
+    );
+  });
+
   it("joins authoritative inventory and leases into stable detail rows", () => {
     const snapshot = buildSnapshot();
+
+    expect(snapshot.inventoryScope).toEqual({
+      providerKinds: ["dslogic", "fake"],
+      backendKinds: ["dsview", "fake"]
+    });
 
     expect(snapshot.devices.map((device) => device.deviceId)).toEqual([
       "device-a",
@@ -195,6 +386,11 @@ describe("createDashboardSnapshot", () => {
       deviceId: "device-a",
       readinessBadge: "ready",
       occupancyState: "occupied",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-a",
+        canonicalKey: "dslogic:device-a"
+      },
       owner: {
         skillId: "skill-from-lease",
         source: "lease"
@@ -212,6 +408,11 @@ describe("createDashboardSnapshot", () => {
       deviceId: "device-b",
       readinessBadge: "degraded",
       occupancyState: "lease-missing",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "device-b",
+        canonicalKey: "dslogic:device-b"
+      },
       owner: {
         skillId: "skill-from-device",
         source: "device"
@@ -294,5 +495,6 @@ describe("createDashboardSnapshot", () => {
     expect(snapshot.overview.totalDevices).toBe(0);
     expect(snapshot.overview.orphanedLeases).toBe(3);
     expect(snapshot.overview.backendMissing).toBe(1);
+    expect(snapshot.inventoryScope).toEqual(inventory.inventoryScope);
   });
 });

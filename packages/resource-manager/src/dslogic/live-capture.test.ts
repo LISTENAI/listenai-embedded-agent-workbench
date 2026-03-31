@@ -4,6 +4,7 @@ import {
   LIVE_CAPTURE_FAILURE_KINDS,
   LIVE_CAPTURE_FAILURE_PHASES,
   captureDslogicLive,
+  createDslogicLiveCaptureProvider,
   createDslogicLiveCaptureRunner,
   createLiveCaptureRequest,
   type LiveCaptureFailure,
@@ -108,6 +109,42 @@ describe("DSLogic live capture seam", () => {
     expectTypeOf<LiveCaptureResult>().toEqualTypeOf<
       LiveCaptureSuccess | LiveCaptureFailure
     >();
+  });
+
+  it("creates a provider-dispatched DSLogic live capture adapter", async () => {
+    const request = createLiveCaptureRequest(createSession(2));
+    let capturedRequest: LiveCaptureRequest | undefined;
+    const liveCapture = createDslogicLiveCaptureProvider(
+      createDslogicLiveCaptureRunner(async (incomingRequest) => {
+        capturedRequest = incomingRequest;
+        return {
+          ok: true,
+          artifact: {
+            sourceName: "logic-1.csv",
+            formatHint: "sigrok-csv",
+            mediaType: "text/csv",
+            text: "Time [us],D0,D1\n0,0,1\n"
+          }
+        };
+      })
+    );
+
+    expect(liveCapture.supportsDevice(request.session.device)).toBe(true);
+    expect(
+      liveCapture.supportsDevice({
+        ...request.session.device,
+        backendKind: "fake"
+      })
+    ).toBe(false);
+
+    const result = await liveCapture.liveCapture(request);
+
+    expect(capturedRequest).toEqual(request);
+    expect(result).toMatchObject({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview"
+    });
   });
 
   it("returns a CaptureArtifactInput-compatible success result for a minimal 2-channel request", async () => {

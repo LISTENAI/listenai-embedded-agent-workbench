@@ -1,10 +1,12 @@
 import type {
+  CanonicalDeviceIdentity,
   DashboardDeviceBadge,
   DashboardDeviceRow,
   DashboardLeaseState,
   DashboardOccupancyState,
   DashboardSnapshot,
   DashboardOwnerIdentity,
+  InventoryScope,
   InventorySnapshot,
   LeaseInfo
 } from "@listenai/contracts";
@@ -34,10 +36,20 @@ const cloneLease = (lease: LeaseInfo): LeaseInfo => ({ ...lease });
 const cloneOwner = (owner: DashboardOwnerIdentity | null): DashboardOwnerIdentity | null =>
   owner ? { ...owner } : null;
 
+const cloneCanonicalIdentity = (
+  identity: CanonicalDeviceIdentity | undefined
+): CanonicalDeviceIdentity | undefined => (identity ? { ...identity } : undefined);
+
+const cloneInventoryScope = (scope: InventoryScope): InventoryScope => ({
+  providerKinds: [...scope.providerKinds],
+  backendKinds: [...scope.backendKinds]
+});
+
 const cloneRow = (row: DashboardDeviceRow): DashboardDeviceRow => ({
   ...row,
   owner: cloneOwner(row.owner),
   lease: { ...row.lease },
+  canonicalIdentity: cloneCanonicalIdentity(row.canonicalIdentity),
   diagnostics: row.diagnostics.map((diagnostic) => ({ ...diagnostic }))
 });
 
@@ -154,7 +166,8 @@ const projectDeviceRow = (
     updatedAt: device.updatedAt,
     diagnostics: device.diagnostics?.map((diagnostic) => ({ ...diagnostic })) ?? [],
     providerKind: device.providerKind,
-    backendKind: device.backendKind
+    backendKind: device.backendKind,
+    canonicalIdentity: cloneCanonicalIdentity(device.canonicalIdentity)
   };
 };
 
@@ -208,8 +221,7 @@ export const createDashboardSnapshot = (
 
   return {
     generatedAt: inventory.refreshedAt,
-    providerKind: inventory.providerKind,
-    backendKind: inventory.backendKind,
+    inventoryScope: cloneInventoryScope(inventory.inventoryScope),
     overview,
     backendReadiness: inventory.backendReadiness.map((backend) => ({
       ...backend,

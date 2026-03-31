@@ -24,9 +24,11 @@ describe("DslogicDeviceProvider", () => {
     const snapshot = await provider.listInventorySnapshot()
 
     expect(snapshot).toEqual({
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [
         {
           deviceId: "logic-ready",
@@ -383,9 +385,11 @@ describe("DslogicDeviceProvider", () => {
     })
 
     await expect(provider.listInventorySnapshot()).resolves.toEqual({
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [],
       backendReadiness: [
         {

@@ -3,11 +3,15 @@ import type {
   DeviceRecord,
   DslogicDeviceIdentity,
   InventoryDiagnostic,
-  InventorySnapshot
+  InventorySnapshot,
+  LiveCaptureFailure,
+  LiveCaptureRequest,
+  LiveCaptureResult
 } from "@listenai/contracts";
 import type {
   DeviceProvider,
-  DiscoveredDevice
+  DiscoveredDevice,
+  LiveCaptureProvider
 } from "../device-provider.js";
 
 const DEFAULT_REFRESHED_AT = "1970-01-01T00:00:00.000Z";
@@ -24,6 +28,9 @@ const cloneDslogicIdentity = (
 const cloneDeviceRecord = (record: DeviceRecord): DeviceRecord => ({
   ...record,
   diagnostics: record.diagnostics?.map(cloneDiagnostic),
+  canonicalIdentity: record.canonicalIdentity
+    ? { ...record.canonicalIdentity }
+    : record.canonicalIdentity,
   dslogic: cloneDslogicIdentity(record.dslogic)
 });
 
@@ -34,8 +41,39 @@ const cloneBackendReadiness = (
   diagnostics: record.diagnostics.map(cloneDiagnostic)
 });
 
+const collectUniqueKinds = <T extends string>(values: Iterable<T | null | undefined>): T[] => {
+  const unique: T[] = [];
+
+  for (const value of values) {
+    if (!value || unique.includes(value)) {
+      continue;
+    }
+    unique.push(value);
+  }
+
+  return unique;
+};
+
+const inferInventoryScope = (snapshot: InventorySnapshot): InventorySnapshot["inventoryScope"] => {
+  const providerKinds = collectUniqueKinds([
+    ...snapshot.inventoryScope?.providerKinds ?? [],
+    ...snapshot.devices.map((device) => device.providerKind)
+  ]);
+  const backendKinds = collectUniqueKinds([
+    ...snapshot.inventoryScope?.backendKinds ?? [],
+    ...snapshot.devices.map((device) => device.backendKind),
+    ...snapshot.backendReadiness.map((backend) => backend.backendKind)
+  ]);
+
+  return {
+    providerKinds: providerKinds.length > 0 ? providerKinds : ["fake"],
+    backendKinds: backendKinds.length > 0 ? backendKinds : ["fake"]
+  };
+};
+
 const cloneInventorySnapshot = (snapshot: InventorySnapshot): InventorySnapshot => ({
   ...snapshot,
+  inventoryScope: inferInventoryScope(snapshot),
   devices: snapshot.devices.map(cloneDeviceRecord),
   backendReadiness: snapshot.backendReadiness.map(cloneBackendReadiness),
   diagnostics: snapshot.diagnostics.map(cloneDiagnostic)
@@ -67,9 +105,11 @@ const buildSnapshotFromDevices = (
     DEFAULT_REFRESHED_AT;
 
   return {
-    providerKind: "fake",
-    backendKind: "fake",
     refreshedAt,
+    inventoryScope: {
+      providerKinds: ["fake"],
+      backendKinds: ["fake"]
+    },
     devices: readyDevices,
     backendReadiness: [],
     diagnostics: []
@@ -99,8 +139,48 @@ const isCompatibilityVisible = (record: DeviceRecord): boolean =>
   record.connectionState === "connected" &&
   (record.readiness === undefined || record.readiness === "ready");
 
+const supportsFakeLiveCapture = (
+  device: Pick<DeviceRecord, "providerKind" | "backendKind">
+): boolean => device.providerKind === "fake" && device.backendKind === "fake";
+
+const buildUnsupportedFakeCapture = (
+  request: LiveCaptureRequest
+): LiveCaptureFailure => ({
+  ok: false,
+  reason: "capture-failed",
+  kind: "unsupported-runtime",
+  message: "Live capture is not supported by the fake provider/backend.",
+  session: request.session,
+  requestedAt: request.requestedAt,
+  artifactSummary: null,
+  diagnostics: {
+    phase: "validate-session",
+    providerKind: request.session.device.providerKind ?? null,
+    backendKind: request.session.device.backendKind ?? null,
+    executablePath: null,
+    command: [],
+    timeoutMs: request.timeoutMs ?? null,
+    exitCode: null,
+    signal: null,
+    stdout: null,
+    stderr: null,
+    details: [
+      "Fake provider inventory can drive allocation flows but does not implement live capture.",
+      "Use the DSLogic provider/backend to exercise real live capture."
+    ],
+    diagnostics: request.session.device.diagnostics ?? []
+  }
+});
+
+const fakeLiveCaptureProvider: LiveCaptureProvider = {
+  supportsDevice: supportsFakeLiveCapture,
+  liveCapture: async (request): Promise<LiveCaptureResult> =>
+    buildUnsupportedFakeCapture(request)
+};
+
 export class FakeDeviceProvider implements DeviceProvider {
   #snapshot: InventorySnapshot;
+  readonly liveCapture = fakeLiveCaptureProvider;
 
   constructor(initialState: readonly DiscoveredDevice[] | InventorySnapshot = []) {
     this.#snapshot = isInventorySnapshot(initialState)

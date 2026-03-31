@@ -243,8 +243,10 @@ describe("Lease integration tests", () => {
       expect(inventoryRes.status).toBe(200);
       const inventory = await inventoryRes.json();
       expect(inventory).toMatchObject({
-        providerKind: "fake",
-        backendKind: "fake",
+        inventoryScope: {
+          providerKinds: ["fake"],
+          backendKinds: ["fake"]
+        },
         devices: [
           expect.objectContaining({
             deviceId: "dev1",

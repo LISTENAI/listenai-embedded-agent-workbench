@@ -47,12 +47,21 @@ const getRelevantBackendReadiness = (
   snapshot: InventorySnapshot,
   device: DeviceRecord | null | undefined
 ): readonly BackendReadinessRecord[] => {
-  const backendKind = device?.backendKind ?? snapshot.backendKind;
-  const matching = snapshot.backendReadiness.filter(
-    (record) => record.backendKind === backendKind
-  );
+  const backendKind =
+    device?.backendKind ??
+    (snapshot.inventoryScope.backendKinds.length === 1
+      ? snapshot.inventoryScope.backendKinds[0]
+      : undefined);
+  const matching =
+    backendKind === undefined
+      ? []
+      : snapshot.backendReadiness.filter(
+          (record) => record.backendKind === backendKind
+        );
 
-  return cloneBackendReadiness(matching.length > 0 ? matching : snapshot.backendReadiness);
+  return cloneBackendReadiness(
+    matching.length > 0 ? matching : snapshot.backendReadiness
+  );
 };
 
 const evaluateBackendReadiness = (

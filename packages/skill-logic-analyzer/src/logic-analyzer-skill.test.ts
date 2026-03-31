@@ -102,9 +102,11 @@ const createInventoryDevice = (
 const createReadyInventorySnapshot = (
   overrides: Partial<InventorySnapshot> = {}
 ): InventorySnapshot => ({
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: connectedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["dsview"]
+  },
   devices: [createInventoryDevice()],
   backendReadiness: [
     {

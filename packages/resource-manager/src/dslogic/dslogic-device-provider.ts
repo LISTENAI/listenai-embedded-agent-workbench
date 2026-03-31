@@ -4,7 +4,11 @@ import type {
   InventoryDiagnostic,
   InventorySnapshot
 } from "@listenai/contracts"
-import type { DeviceProvider, DiscoveredDevice } from "../device-provider.js"
+import type {
+  DeviceProvider,
+  DiscoveredDevice,
+  LiveCaptureProvider
+} from "../device-provider.js"
 import {
   DSLOGIC_BACKEND_KIND,
   DSLOGIC_PROVIDER_KIND,
@@ -16,11 +20,16 @@ import {
   type DslogicBackendProbeSnapshot,
   type DslogicProbeDeviceCandidate
 } from "./backend-probe.js"
+import {
+  createDslogicLiveCaptureProvider,
+  type DslogicLiveCaptureRunner
+} from "./live-capture.js"
 
 export interface DslogicDeviceProviderOptions {
   probe?: DslogicBackendProbe
   now?: () => string
   getHostPlatform?: () => NodeJS.Platform
+  liveCaptureRunner?: DslogicLiveCaptureRunner
 }
 
 const cloneDiagnostic = (
@@ -135,9 +144,11 @@ const buildInventorySnapshot = (
   )
 
   return {
-    providerKind: DSLOGIC_PROVIDER_KIND,
-    backendKind: DSLOGIC_BACKEND_KIND,
     refreshedAt: snapshot.checkedAt,
+    inventoryScope: {
+      providerKinds: [DSLOGIC_PROVIDER_KIND],
+      backendKinds: [DSLOGIC_BACKEND_KIND]
+    },
     devices,
     backendReadiness: [backendReadiness],
     diagnostics: [
@@ -166,9 +177,11 @@ const buildFallbackSnapshot = (
   }
 
   return {
-    providerKind: DSLOGIC_PROVIDER_KIND,
-    backendKind: DSLOGIC_BACKEND_KIND,
     refreshedAt: checkedAt,
+    inventoryScope: {
+      providerKinds: [DSLOGIC_PROVIDER_KIND],
+      backendKinds: [DSLOGIC_BACKEND_KIND]
+    },
     devices: [],
     backendReadiness: [
       {
@@ -189,6 +202,7 @@ export class DslogicDeviceProvider implements DeviceProvider {
   readonly #probe: DslogicBackendProbe
   readonly #now: () => string
   readonly #getHostPlatform: () => NodeJS.Platform
+  readonly liveCapture?: LiveCaptureProvider
 
   constructor(options: DslogicDeviceProviderOptions = {}) {
     this.#probe = options.probe ?? createDslogicBackendProbe({
@@ -197,6 +211,9 @@ export class DslogicDeviceProvider implements DeviceProvider {
     })
     this.#now = options.now ?? (() => new Date().toISOString())
     this.#getHostPlatform = options.getHostPlatform ?? (() => process.platform)
+    this.liveCapture = options.liveCaptureRunner
+      ? createDslogicLiveCaptureProvider(options.liveCaptureRunner)
+      : undefined
   }
 
   async listInventorySnapshot(): Promise<InventorySnapshot> {

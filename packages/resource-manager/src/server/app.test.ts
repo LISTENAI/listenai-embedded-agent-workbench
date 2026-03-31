@@ -8,9 +8,11 @@ import { LeaseManager } from "./lease-manager.js";
 const refreshedAt = "2026-03-26T09:00:00.000Z";
 
 const dslogicSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["dsview"]
+  },
   devices: [
     {
       deviceId: "logic-ready",
@@ -98,10 +100,119 @@ const dslogicSnapshot: InventorySnapshot = {
   ]
 };
 
-const dashboardSnapshotInventory: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
+const mixedProviderInventory: InventorySnapshot = {
   refreshedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic", "fake"],
+    backendKinds: ["dsview", "fake"]
+  },
+  devices: [
+    {
+      deviceId: "logic-collision",
+      label: "DSLogic Collision",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: refreshedAt,
+      updatedAt: refreshedAt,
+      readiness: "ready",
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "device",
+          message: "DSLogic capture path is slow.",
+          deviceId: "logic-collision",
+          backendKind: "dsview"
+        }
+      ],
+      providerKind: "dslogic",
+      backendKind: "dsview",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "collision-001",
+        canonicalKey: "dslogic:collision-001"
+      },
+      dslogic: null
+    },
+    {
+      deviceId: "logic-collision",
+      label: "Fake Collision",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: refreshedAt,
+      updatedAt: refreshedAt,
+      readiness: "degraded",
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "device",
+          message: "Fake provider reported a slower probe.",
+          deviceId: "logic-collision",
+          backendKind: "fake"
+        }
+      ],
+      providerKind: "fake",
+      backendKind: "fake",
+      canonicalIdentity: {
+        providerKind: "fake",
+        providerDeviceId: "collision-001",
+        canonicalKey: "fake:collision-001"
+      },
+      dslogic: null
+    }
+  ],
+  backendReadiness: [
+    {
+      platform: "macos",
+      backendKind: "dsview",
+      readiness: "degraded",
+      executablePath: "/Applications/DSView.app",
+      version: "2.0.0",
+      checkedAt: refreshedAt,
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "backend",
+          message: "DSView readiness probe exceeded the soft timeout.",
+          platform: "macos",
+          backendKind: "dsview"
+        }
+      ]
+    },
+    {
+      platform: "macos",
+      backendKind: "fake",
+      readiness: "ready",
+      executablePath: null,
+      version: null,
+      checkedAt: refreshedAt,
+      diagnostics: []
+    }
+  ],
+  diagnostics: [
+    {
+      code: "backend-probe-timeout",
+      severity: "warning",
+      target: "backend",
+      message: "DSView readiness probe exceeded the soft timeout.",
+      platform: "macos",
+      backendKind: "dsview"
+    }
+  ]
+};
+
+const dashboardSnapshotInventory: InventorySnapshot = {
+  refreshedAt,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["dsview"]
+  },
   devices: [
     {
       deviceId: "logic-free",
@@ -534,6 +645,60 @@ describe("Hono app routes", () => {
     expect(body).toEqual(dslogicSnapshot.devices);
   });
 
+
+  it("GET /inventory and /dashboard-snapshot preserve mixed-provider identity and backend diagnostics", async () => {
+    const provider = new FakeDeviceProvider(mixedProviderInventory);
+    const manager = createResourceManager(provider, { now: () => refreshedAt });
+    await manager.refreshInventorySnapshot();
+    const leaseManager = new LeaseManager();
+    const app = createApp(manager, leaseManager);
+
+    const inventoryRes = await app.request("/inventory");
+    expect(inventoryRes.status).toBe(200);
+    const inventoryBody = await inventoryRes.json();
+    expect(inventoryBody).toEqual(mixedProviderInventory);
+
+    const dashboardRes = await app.request("/dashboard-snapshot");
+    expect(dashboardRes.status).toBe(200);
+    const dashboardBody = await dashboardRes.json();
+
+    expect(dashboardBody.inventoryScope).toEqual(mixedProviderInventory.inventoryScope);
+    expect(dashboardBody.devices).toHaveLength(2);
+    expect(
+      dashboardBody.devices.map((device: { canonicalIdentity: { canonicalKey: string } }) =>
+        device.canonicalIdentity.canonicalKey
+      )
+    ).toEqual(["dslogic:collision-001", "fake:collision-001"]);
+    expect(
+      dashboardBody.devices.map((device: { backendKind: string; diagnostics: Array<{ backendKind?: string }> }) => ({
+        backendKind: device.backendKind,
+        diagnosticBackendKinds: device.diagnostics.map((diagnostic) => diagnostic.backendKind ?? null)
+      }))
+    ).toEqual([
+      {
+        backendKind: "dsview",
+        diagnosticBackendKinds: ["dsview"]
+      },
+      {
+        backendKind: "fake",
+        diagnosticBackendKinds: ["fake"]
+      }
+    ]);
+    expect(dashboardBody.backendReadiness).toEqual(mixedProviderInventory.backendReadiness);
+    expect(dashboardBody.diagnostics).toEqual(mixedProviderInventory.diagnostics);
+    expect(dashboardBody.overview).toEqual(
+      expect.objectContaining({
+        totalDevices: 2,
+        readyDevices: 1,
+        degradedDevices: 1,
+        backendReady: 1,
+        backendDegraded: 1,
+        backendMissing: 0,
+        backendUnsupported: 0
+      })
+    );
+  });
+
   it("GET /dashboard-snapshot proves free, allocated, degraded, unsupported, and backend-missing truth", async () => {
     const now = Date.parse("2026-03-26T09:00:00.000Z");
     vi.useFakeTimers();
@@ -766,9 +931,11 @@ describe("Hono app routes", () => {
 
   it("GET /devices returns device rows from backend-only snapshots without fabricating entries", async () => {
     const provider = new FakeDeviceProvider({
-      providerKind: "dslogic",
-      backendKind: "dsview",
       refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["dsview"]
+      },
       devices: [],
       backendReadiness: dslogicSnapshot.backendReadiness,
       diagnostics: dslogicSnapshot.diagnostics
