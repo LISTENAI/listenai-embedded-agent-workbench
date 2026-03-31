@@ -213,6 +213,52 @@ describe("Lease integration tests", () => {
     });
   });
 
+  it("live server refreshes inventory before serving the first snapshot", async () => {
+    vi.useRealTimers();
+
+    const provider = new FakeDeviceProvider([
+      {
+        deviceId: "dev1",
+        label: "Device 1",
+        capabilityType: "audio",
+        lastSeenAt: "2026-03-26T09:00:00.000Z"
+      }
+    ]);
+    const manager = createResourceManager(provider, {
+      now: () => "2026-03-26T09:00:00.000Z"
+    });
+    const leaseManager = new LeaseManager();
+    const { start, stop } = createServer({
+      port: 0,
+      host: "127.0.0.1",
+      manager,
+      leaseManager,
+      scanIntervalMs: 10
+    });
+
+    const { url } = await start();
+
+    try {
+      const inventoryRes = await fetch(`${url}/inventory`);
+      expect(inventoryRes.status).toBe(200);
+      const inventory = await inventoryRes.json();
+      expect(inventory).toMatchObject({
+        providerKind: "fake",
+        backendKind: "fake",
+        devices: [
+          expect.objectContaining({
+            deviceId: "dev1",
+            allocationState: "free",
+            connectionState: "connected"
+          })
+        ]
+      });
+      expect(inventory.refreshedAt).not.toBe("1970-01-01T00:00:00.000Z");
+    } finally {
+      stop();
+    }
+  });
+
   it("live server honors short timing overrides and releases expired leases", async () => {
     vi.useRealTimers();
 

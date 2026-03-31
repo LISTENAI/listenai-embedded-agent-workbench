@@ -82,6 +82,7 @@ export interface ClassifiedDslogicCandidate {
 }
 
 const DEFAULT_TIMEOUT_MS = 1500
+const DEFAULT_USB_ENUMERATION_TIMEOUT_MS = 5000
 
 const normalizeUsbIdentifier = (value: string | null | undefined): string | null => {
   if (!value) {
@@ -119,6 +120,138 @@ const parseVersionFromOutput = (output: string): string | null => {
   }
 
   return null
+}
+
+const readRecordString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+
+const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const extractUsbIdentifier = (value: unknown): string | null => {
+  const text = readRecordString(value)
+  if (!text) {
+    return null
+  }
+
+  const hexMatch = text.match(/0x([0-9a-f]{4})/i)
+  if (hexMatch) {
+    return hexMatch[1]!.toLowerCase()
+  }
+
+  const plainMatch = text.match(/\b([0-9a-f]{4})\b/i)
+  return plainMatch ? plainMatch[1]!.toLowerCase() : null
+}
+
+const buildUsbDeviceId = (
+  candidate: Pick<DslogicProbeDeviceCandidate, "usbVendorId" | "usbProductId" | "label">,
+  serialNumber: string | null,
+  locationId: string | null
+): string => {
+  if (serialNumber) {
+    return serialNumber
+  }
+
+  if (locationId) {
+    return locationId
+  }
+
+  const parts = [candidate.usbVendorId, candidate.usbProductId, candidate.label]
+    .filter((part): part is string => Boolean(part && part.trim().length > 0))
+    .map((part) => part.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"))
+
+  return parts.join(":") || "dslogic-device"
+}
+
+export const parseMacosUsbDevices = (
+  output: string,
+  detectedAt: string
+): DslogicProbeDeviceCandidate[] => {
+  const payload = JSON.parse(output) as unknown
+  const roots = isJsonRecord(payload) && Array.isArray(payload.SPUSBDataType)
+    ? payload.SPUSBDataType
+    : []
+  const devices: DslogicProbeDeviceCandidate[] = []
+  const seenDeviceIds = new Set<string>()
+
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) {
+        visit(entry)
+      }
+      return
+    }
+
+    if (!isJsonRecord(node)) {
+      return
+    }
+
+    const usbVendorId = extractUsbIdentifier(node.vendor_id ?? node.spusb_vendor_id)
+    const usbProductId = extractUsbIdentifier(node.product_id)
+    const label =
+      readRecordString(node._name) ??
+      readRecordString(node.name) ??
+      readRecordString(node.product_name) ??
+      "DSLogic device"
+    const manufacturer =
+      readRecordString(node.manufacturer) ??
+      readRecordString(node.vendor_name) ??
+      readRecordString(node.vendor)
+    const looksLikeDslogic =
+      usbVendorId === "2a0e" ||
+      /dslogic/i.test(label) ||
+      /dreamsourcelab/i.test(manufacturer ?? "")
+
+    if (looksLikeDslogic) {
+      const serialNumber =
+        readRecordString(node.serial_num) ??
+        readRecordString(node.serial_number)
+      const locationId = readRecordString(node.location_id)
+      const candidate: DslogicProbeDeviceCandidate = {
+        deviceId: buildUsbDeviceId({ usbVendorId, usbProductId, label }, serialNumber, locationId),
+        label,
+        lastSeenAt: detectedAt,
+        capabilityType: "logic-analyzer",
+        usbVendorId,
+        usbProductId,
+        model: /dslogic/i.test(label) ? "dslogic-plus" : null,
+        modelDisplayName: label,
+        variantHint: null
+      }
+
+      if (!seenDeviceIds.has(candidate.deviceId)) {
+        seenDeviceIds.add(candidate.deviceId)
+        devices.push(candidate)
+      }
+    }
+
+    for (const child of Object.values(node)) {
+      visit(child)
+    }
+  }
+
+  visit(roots)
+  return devices
+}
+
+const listUsbDevicesForHost = async (
+  getHostPlatform: () => NodeJS.Platform,
+  runCommand: NonNullable<CreateDslogicBackendProbeOptions["runCommand"]>,
+  now: () => string
+): Promise<readonly DslogicProbeDeviceCandidate[]> => {
+  switch (getHostPlatform()) {
+    case "darwin": {
+      const { stdout } = await runCommand(
+        "system_profiler",
+        ["SPUSBDataType", "-json"],
+        { timeoutMs: DEFAULT_USB_ENUMERATION_TIMEOUT_MS }
+      )
+
+      return parseMacosUsbDevices(stdout, now())
+    }
+    default:
+      return []
+  }
 }
 
 const createBackendDiagnostic = (
@@ -310,7 +443,12 @@ const defaultRunCommand: NonNullable<CreateDslogicBackendProbeOptions["runComman
   }
 }
 
-const defaultListUsbDevices: NonNullable<CreateDslogicBackendProbeOptions["listUsbDevices"]> = async () => []
+const defaultListUsbDevices = (
+  getHostPlatform: () => NodeJS.Platform,
+  runCommand: NonNullable<CreateDslogicBackendProbeOptions["runCommand"]>,
+  now: () => string
+): NonNullable<CreateDslogicBackendProbeOptions["listUsbDevices"]> =>
+  async () => listUsbDevicesForHost(getHostPlatform, runCommand, now)
 
 export const createDslogicBackendProbe = (
   options: CreateDslogicBackendProbeOptions = {}
@@ -319,7 +457,7 @@ export const createDslogicBackendProbe = (
   const getHostPlatform = options.getHostPlatform ?? (() => process.platform)
   const locateExecutable = options.locateExecutable ?? defaultLocateExecutable
   const runCommand = options.runCommand ?? defaultRunCommand
-  const listUsbDevices = options.listUsbDevices ?? defaultListUsbDevices
+  const listUsbDevices = options.listUsbDevices ?? defaultListUsbDevices(getHostPlatform, runCommand, now)
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
   return {

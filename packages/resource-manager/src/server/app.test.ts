@@ -322,6 +322,8 @@ describe("Hono app routes", () => {
     expect(body).toContain("No per-device diagnostics reported.");
     expect(body).toContain("Owner identity");
     expect(body).toContain("Lease timing");
+    expect(body).toContain("A fake provider/backend is serving this snapshot");
+    expect(body).toContain("Backend readiness has not reported any probe results yet.");
   });
 
   it("GET /favicon.ico returns 204 so the dashboard loads without failed requests", async () => {

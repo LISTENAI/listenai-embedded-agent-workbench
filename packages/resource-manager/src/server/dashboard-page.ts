@@ -616,6 +616,8 @@ function summarizeSystemStatus(snapshot) {
   const unavailableOrAbnormal = snapshot.devices.filter((device) => {
     return device.readinessBadge !== 'ready' || leaseAttentionStates.has(device.occupancyState);
   }).length;
+  const usesSimulatedProvider = snapshot.providerKind === 'fake' || snapshot.backendKind === 'fake';
+  const missingBackendTelemetry = snapshot.backendReadiness.length === 0;
 
   if (snapshot.overview.backendMissing > 0 || snapshot.overview.backendUnsupported > 0) {
     return {
@@ -624,6 +626,18 @@ function summarizeSystemStatus(snapshot) {
       summary: unavailableOrAbnormal > 0
         ? unavailableOrAbnormal + ' device ' + pluralize(unavailableOrAbnormal, 'entry', 'entries') + ' unavailable or abnormal, plus backend blockers.'
         : 'Backend blockers are preventing a fully healthy system posture.',
+      unavailableOrAbnormal,
+      backend
+    };
+  }
+
+  if (usesSimulatedProvider || missingBackendTelemetry) {
+    return {
+      tone: 'attention',
+      label: 'Attention needed',
+      summary: usesSimulatedProvider
+        ? 'A fake provider/backend is serving this snapshot, so hardware readiness is not being probed.'
+        : 'Backend readiness has not reported any probe results yet.',
       unavailableOrAbnormal,
       backend
     };
@@ -638,7 +652,9 @@ function summarizeSystemStatus(snapshot) {
     return {
       tone: 'attention',
       label: 'Attention needed',
-      summary: unavailableOrAbnormal + ' device ' + pluralize(unavailableOrAbnormal, 'entry', 'entries') + ' unavailable or abnormal.',
+      summary: unavailableOrAbnormal > 0
+        ? unavailableOrAbnormal + ' device ' + pluralize(unavailableOrAbnormal, 'entry', 'entries') + ' unavailable or abnormal.'
+        : 'Backend or lease telemetry needs attention before the system is healthy.',
       unavailableOrAbnormal,
       backend
     };

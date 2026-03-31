@@ -84,6 +84,8 @@ export function createServer(options: ServerOptions) {
         activeServer.once("listening", onListening);
       });
 
+      await options.manager.refreshInventorySnapshot();
+
       if (!scanInterval) {
         scanInterval = setInterval(() => {
           const expiredCount = options.leaseManager.scanExpired((lease) => {
