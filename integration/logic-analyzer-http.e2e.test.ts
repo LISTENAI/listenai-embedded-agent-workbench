@@ -46,7 +46,7 @@ function createDiagnostic(
     severity: "warning",
     target: "backend",
     message: "Backend probe returned incomplete capability data.",
-    backendKind: "dsview",
+    backendKind: "libsigrok",
     ...overrides,
   };
 }
@@ -66,7 +66,7 @@ function createInventoryDevice(
     readiness: "ready",
     diagnostics: [],
     providerKind: "dslogic",
-    backendKind: "dsview",
+    backendKind: "libsigrok",
     dslogic: {
       family: "dslogic",
       model: "dslogic-plus",
@@ -84,16 +84,16 @@ function createReadyInventorySnapshot(
 ): InventorySnapshot {
   return {
     providerKind: "dslogic",
-    backendKind: "dsview",
+    backendKind: "libsigrok",
     refreshedAt: connectedAt,
     devices: [createInventoryDevice()],
     backendReadiness: [
       {
         platform: "macos",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         readiness: "ready",
-        executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        version: "1.3.1",
+        executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+        version: "libsigrok 0.6.0",
         checkedAt: connectedAt,
         diagnostics: [],
       },
@@ -108,25 +108,25 @@ function createBackendMissingSnapshot(): InventorySnapshot {
     backendReadiness: [
       {
         platform: "macos",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         readiness: "missing",
         executablePath: null,
         version: null,
         checkedAt: connectedAt,
         diagnostics: [
           createDiagnostic({
-            code: "backend-missing-executable",
+            code: "backend-missing-runtime",
             severity: "error",
-            message: "DSView was not found on PATH.",
+            message: "libsigrok runtime is not available on macos.",
           }),
         ],
       },
     ],
     diagnostics: [
       createDiagnostic({
-        code: "backend-missing-executable",
+        code: "backend-missing-runtime",
         severity: "error",
-        message: "DSView was not found on PATH.",
+        message: "libsigrok runtime is not available on macos.",
       }),
     ],
   });
@@ -294,9 +294,8 @@ describe("logic-analyzer live HTTP workflow", () => {
   it("normalizes a live capture over HTTP and keeps the accepted lease until endSession", async () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      artifact: {
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+            artifact: {
         sourceName: "logic-1-live.csv",
         formatHint: "sigrok-csv",
         capturedAt: captureRequestedAt,
@@ -341,7 +340,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             ownerSkillId: "logic-analyzer",
           },
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           artifactSummary: {
             sourceName: "logic-1-live.csv",
             formatHint: "sigrok-csv",
@@ -404,10 +403,9 @@ describe("logic-analyzer live HTTP workflow", () => {
       ok: false,
       kind: "timeout",
       phase: "await-runner",
-      message: "DSView capture timed out.",
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      timeoutMs: 1500,
+      message: "libsigrok capture timed out.",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+            timeoutMs: 1500,
       stderr: {
         text: "Capture did not complete within 1500ms.",
       },
@@ -474,9 +472,8 @@ describe("logic-analyzer live HTTP workflow", () => {
   it("proves the packaged live entrypoint over HTTP and keeps cleanup explicit on success", async () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      artifact: {
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+            artifact: {
         sourceName: "logic-1-live.csv",
         formatHint: "sigrok-csv",
         capturedAt: captureRequestedAt,
@@ -587,7 +584,7 @@ describe("logic-analyzer live HTTP workflow", () => {
         expect(resourceManager.getLastInventorySnapshot()).toMatchObject({
           backendReadiness: [
             expect.objectContaining({
-              backendKind: "dsview",
+              backendKind: "libsigrok",
               readiness: "ready",
             }),
           ],
@@ -636,7 +633,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             readiness: "ready",
             diagnostics: [],
             providerKind: "dslogic",
-            backendKind: "dsview",
+            backendKind: "libsigrok",
             dslogic: {
               family: "dslogic",
               model: "dslogic-plus",
@@ -662,7 +659,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             readiness: "ready",
             diagnostics: [],
             providerKind: "dslogic",
-            backendKind: "dsview",
+            backendKind: "libsigrok",
             dslogic: {
               family: "dslogic",
               model: "dslogic-plus",
@@ -682,9 +679,8 @@ describe("logic-analyzer live HTTP workflow", () => {
   it("throws malformed live HTTP payloads as parser errors and keeps the accepted lease inspectable", async () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      artifact: {
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+            artifact: {
         sourceName: "logic-1-live.csv",
         formatHint: "sigrok-csv",
         capturedAt: captureRequestedAt,
@@ -727,7 +723,7 @@ describe("logic-analyzer live HTTP workflow", () => {
               JSON.stringify({
                 ok: true,
                 providerKind: "dslogic",
-                backendKind: "dsview",
+                backendKind: "libsigrok",
                 session: {
                   sessionId: body.session?.sessionId,
                   deviceId: body.session?.deviceId,
@@ -815,10 +811,9 @@ describe("logic-analyzer live HTTP workflow", () => {
       ok: false,
       kind: "timeout",
       phase: "await-runner",
-      message: "DSView capture timed out.",
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      timeoutMs: 1500,
+      message: "libsigrok capture timed out.",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+            timeoutMs: 1500,
       stderr: {
         text: "Capture did not complete within 1500ms.",
       },
@@ -982,7 +977,7 @@ describe("logic-analyzer live HTTP workflow", () => {
       expect(resourceManager.getLastInventorySnapshot()).toMatchObject({
         backendReadiness: [
           expect.objectContaining({
-            backendKind: "dsview",
+            backendKind: "libsigrok",
             readiness: "ready",
           }),
         ],
@@ -1031,7 +1026,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",
@@ -1057,7 +1052,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",

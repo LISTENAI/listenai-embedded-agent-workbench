@@ -23,7 +23,12 @@
     "verify:m007:s01": "bash scripts/verify-m007-s01.sh",
     "verify:m007:s02": "bash scripts/verify-m007-s02.sh",
     "verify:m007:s04": "bash scripts/verify-m007-s04.sh",
-    "verify:m008:s04": "bash scripts/verify-m008-s04.sh"
+    "verify:m008:s04": "bash scripts/verify-m008-s04.sh",
+    "verify:m009:s02": "bash scripts/verify-m009-s02.sh",
+    "verify:m009:s03": "bash scripts/verify-m009-s03.sh",
+    "verify:m009:s04": "bash scripts/verify-m009-s04.sh",
+    "verify:m009:s05": "bash scripts/verify-m009-s05.sh",
+    "verify:m009": "bash scripts/verify-m009.sh"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

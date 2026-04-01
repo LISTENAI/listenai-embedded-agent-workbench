@@ -27,7 +27,7 @@ describe("DslogicDeviceProvider", () => {
       refreshedAt,
       inventoryScope: {
         providerKinds: ["dslogic"],
-        backendKinds: ["dsview"]
+        backendKinds: ["libsigrok"]
       },
       devices: [
         {
@@ -42,7 +42,7 @@ describe("DslogicDeviceProvider", () => {
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",
@@ -56,10 +56,9 @@ describe("DslogicDeviceProvider", () => {
       backendReadiness: [
         {
           platform: "linux",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           readiness: "ready",
-          executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
-          version: "1.3.1",
+          version: "0.6.0",
           checkedAt: refreshedAt,
           diagnostics: []
         }
@@ -84,7 +83,6 @@ describe("DslogicDeviceProvider", () => {
           checkedAt: refreshedAt,
           platform: "macos",
           backendState: "missing",
-          executablePath: null,
           version: null,
           devices: []
         })
@@ -97,21 +95,19 @@ describe("DslogicDeviceProvider", () => {
     expect(snapshot.backendReadiness).toEqual([
       {
         platform: "macos",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         readiness: "missing",
-        executablePath: null,
         version: null,
         checkedAt: refreshedAt,
         diagnostics: [
           {
-            code: "backend-missing-executable",
+            code: "backend-missing-runtime",
             severity: "error",
             target: "backend",
-            message: "DSView executable dsview was not found on macos.",
+            message: "libsigrok runtime is not available on macos.",
             platform: "macos",
-            backendKind: "dsview",
-            executablePath: null,
-            backendVersion: null
+            backendKind: "libsigrok",
+                backendVersion: null
           }
         ]
       }
@@ -142,7 +138,6 @@ describe("DslogicDeviceProvider", () => {
           checkedAt: refreshedAt,
           platform: "macos",
           backendState: "missing",
-          executablePath: null,
           version: null,
           devices: []
         })
@@ -188,7 +183,7 @@ describe("DslogicDeviceProvider", () => {
           readiness: "missing",
           diagnostics: [
             {
-              code: "backend-missing-executable"
+              code: "backend-missing-runtime"
             }
           ]
         }
@@ -202,7 +197,7 @@ describe("DslogicDeviceProvider", () => {
           readiness: "degraded",
           diagnostics: [
             {
-              code: "backend-probe-timeout"
+              code: "backend-runtime-timeout"
             }
           ]
         }
@@ -213,7 +208,7 @@ describe("DslogicDeviceProvider", () => {
           readiness: "degraded",
           diagnostics: [
             {
-              code: "backend-probe-timeout",
+              code: "backend-runtime-timeout",
               deviceId: "logic-windows"
             }
           ]
@@ -251,7 +246,7 @@ describe("DslogicDeviceProvider", () => {
       deviceId: "logic-pango",
       readiness: "unsupported",
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: {
         variant: "v421-pango",
         usbVendorId: "2a0e",
@@ -265,7 +260,7 @@ describe("DslogicDeviceProvider", () => {
         target: "device",
         message: "Variant V421/Pango (2a0e:0030) is not supported.",
         deviceId: "logic-pango",
-        backendKind: "dsview"
+        backendKind: "libsigrok"
       }
     ])
     expect(snapshot.diagnostics).toContainEqual(device?.diagnostics?.[0])
@@ -290,33 +285,30 @@ describe("DslogicDeviceProvider", () => {
 
     expect(snapshot.backendReadiness[0]).toEqual({
       platform: "linux",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "degraded",
-      executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
       version: null,
       checkedAt: refreshedAt,
       diagnostics: [
         {
-          code: "backend-probe-timeout",
+          code: "backend-runtime-timeout",
           severity: "warning",
           target: "backend",
-          message: "DSView probe timed out before readiness was confirmed on linux.",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on linux.",
           platform: "linux",
-          backendKind: "dsview",
-          executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
-          backendVersion: null
+          backendKind: "libsigrok",
+              backendVersion: null
         }
       ]
     })
     expect(device?.readiness).toBe("degraded")
     expect(device?.diagnostics).toContainEqual({
-      code: "backend-probe-timeout",
+      code: "backend-runtime-timeout",
       severity: "warning",
       target: "backend",
-      message: "DSView probe timed out before readiness was confirmed on linux.",
+      message: "libsigrok runtime probe timed out before readiness was confirmed on linux.",
       platform: "linux",
-      backendKind: "dsview",
-      executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
+      backendKind: "libsigrok",
       backendVersion: null,
       deviceId: "logic-ready"
     })
@@ -349,14 +341,13 @@ describe("DslogicDeviceProvider", () => {
     expect(snapshot.backendReadiness[0]?.readiness).toBe("degraded")
     expect(snapshot.backendReadiness[0]?.diagnostics).toEqual([
       {
-        code: "backend-probe-malformed-output",
+        code: "backend-runtime-malformed-response",
         severity: "error",
         target: "backend",
-        message: "DSView probe returned malformed output on macos.",
+        message: "libsigrok runtime probe returned malformed output on macos.",
         platform: "macos",
-        backendKind: "dsview",
-        executablePath: "/Applications/DSView.app/Contents/MacOS/dsview",
-        backendVersion: null
+        backendKind: "libsigrok",
+          backendVersion: null
       }
     ])
     expect(device).toMatchObject({
@@ -367,12 +358,12 @@ describe("DslogicDeviceProvider", () => {
       }
     })
     expect(device?.diagnostics).toContainEqual({
-      code: "device-probe-malformed-output",
+      code: "device-runtime-malformed-response",
       severity: "warning",
       target: "device",
       message: "Unable to classify DSLogic variant 2a0e:9999.",
       deviceId: "logic-unknown",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     })
     expect(await provider.listConnectedDevices()).toEqual([])
   })
@@ -388,41 +379,38 @@ describe("DslogicDeviceProvider", () => {
       refreshedAt,
       inventoryScope: {
         providerKinds: ["dslogic"],
-        backendKinds: ["dsview"]
+        backendKinds: ["libsigrok"]
       },
       devices: [],
       backendReadiness: [
         {
           platform: "macos",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           readiness: "degraded",
-          executablePath: null,
           version: null,
           checkedAt: refreshedAt,
           diagnostics: [
             {
-              code: "backend-probe-failed",
+              code: "backend-runtime-failed",
               severity: "error",
               target: "backend",
               message: "DSLogic probe threw: spawn EACCES",
               platform: "macos",
-              backendKind: "dsview",
-              executablePath: null,
-              backendVersion: null
+              backendKind: "libsigrok",
+                    backendVersion: null
             }
           ]
         }
       ],
       diagnostics: [
         {
-          code: "backend-probe-failed",
+          code: "backend-runtime-failed",
           severity: "error",
           target: "backend",
           message: "DSLogic probe threw: spawn EACCES",
           platform: "macos",
-          backendKind: "dsview",
-          executablePath: null,
-          backendVersion: null
+          backendKind: "libsigrok",
+            backendVersion: null
         }
       ]
     })

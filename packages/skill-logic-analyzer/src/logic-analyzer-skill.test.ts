@@ -69,7 +69,7 @@ const createDiagnostic = (
   severity: "warning",
   target: "backend",
   message: "Backend probe returned incomplete capability data.",
-  backendKind: "dsview",
+  backendKind: "libsigrok",
   ...overrides
 });
 
@@ -87,7 +87,7 @@ const createInventoryDevice = (
   readiness: "ready",
   diagnostics: [],
   providerKind: "dslogic",
-  backendKind: "dsview",
+  backendKind: "libsigrok",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -105,13 +105,13 @@ const createReadyInventorySnapshot = (
   refreshedAt: connectedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["dsview"]
+    backendKinds: ["libsigrok"]
   },
   devices: [createInventoryDevice()],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "ready",
       executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
       version: "1.3.1",
@@ -441,7 +441,7 @@ describe("logic analyzer skill", () => {
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",
@@ -461,7 +461,7 @@ describe("logic analyzer skill", () => {
         allocationState: "allocated",
         ownerSkillId: "logic-analyzer",
         readiness: "ready",
-        backendKind: "dsview"
+        backendKind: "libsigrok"
       })
     ]);
   });
@@ -518,7 +518,7 @@ describe("logic analyzer skill", () => {
       backendReadiness: [
         {
           platform: "macos",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           readiness: "missing",
           executablePath: null,
           version: null,
@@ -675,7 +675,7 @@ describe("logic analyzer skill", () => {
           lastSeenAt: connectedAt,
           updatedAt: conflictAt,
           readiness: "ready",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         })
       ]);
       expect(secondStart.allocation.device).toEqual(
@@ -788,7 +788,7 @@ describe("logic analyzer skill", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         artifact: {
           sourceName: "logic-1-live.csv",
           formatHint: "sigrok-csv",
@@ -827,7 +827,7 @@ describe("logic analyzer skill", () => {
         ownerSkillId: "logic-analyzer",
       },
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       artifactSummary: {
         sourceName: "logic-1-live.csv",
         formatHint: "sigrok-csv",
@@ -869,7 +869,7 @@ describe("logic analyzer skill", () => {
         phase: "await-runner",
         message: "DSView capture timed out.",
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         timeoutMs: 1500,
         stderr: {
           text: "Capture did not complete within 1500ms.",
@@ -925,7 +925,7 @@ describe("logic analyzer skill", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         artifact: {
           sourceName: "logic-1-incompatible.csv",
           formatHint: "sigrok-csv",
@@ -962,7 +962,7 @@ describe("logic analyzer skill", () => {
         deviceId: "logic-1",
       },
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       artifactSummary: {
         sourceName: "logic-1-incompatible.csv",
         hasText: true,
@@ -1021,7 +1021,7 @@ describe("logic analyzer skill", () => {
         return {
           ok: true,
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           session: {
             sessionId: session.sessionId,
             deviceId: session.deviceId,
@@ -1060,7 +1060,7 @@ describe("logic analyzer skill", () => {
       session,
       requestedAt: captureRequestedAt,
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       artifactSummary: {
         sourceName: "broken-live.csv",
         formatHint: "sigrok-csv",
@@ -1113,7 +1113,7 @@ describe("logic analyzer skill", () => {
         readiness: "ready",
         diagnostics: [],
         providerKind: "dslogic",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         dslogic: {
           family: "dslogic",
           model: "dslogic-plus",
@@ -1174,7 +1174,7 @@ describe("logic analyzer skill", () => {
           lastSeenAt: connectedAt,
           updatedAt: allocateAt,
           readiness: "ready",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         })
       );
     }
@@ -1226,7 +1226,7 @@ describe("logic analyzer skill", () => {
         readiness: "ready",
         diagnostics: [],
         providerKind: "dslogic",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         dslogic: {
           family: "dslogic",
           model: "dslogic-plus",

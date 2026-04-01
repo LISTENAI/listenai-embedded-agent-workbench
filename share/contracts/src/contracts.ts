@@ -22,7 +22,7 @@ export type BackendReadinessState = (typeof BACKEND_READINESS_STATES)[number];
 export const INVENTORY_PROVIDER_KINDS = ["fake", "dslogic"] as const;
 export type InventoryProviderKind = (typeof INVENTORY_PROVIDER_KINDS)[number];
 
-export const INVENTORY_BACKEND_KINDS = ["fake", "dsview", "libsigrok"] as const;
+export const INVENTORY_BACKEND_KINDS = ["fake", "libsigrok"] as const;
 export type InventoryBackendKind = (typeof INVENTORY_BACKEND_KINDS)[number];
 
 export const INVENTORY_PLATFORMS = ["linux", "macos", "windows"] as const;
@@ -45,13 +45,13 @@ export type InventoryDiagnosticTarget =
   (typeof INVENTORY_DIAGNOSTIC_TARGETS)[number];
 
 export const INVENTORY_DIAGNOSTIC_CODES = [
-  "backend-missing-executable",
+  "backend-missing-runtime",
   "backend-unsupported-os",
-  "backend-probe-failed",
-  "backend-probe-timeout",
-  "backend-probe-malformed-output",
+  "backend-runtime-failed",
+  "backend-runtime-timeout",
+  "backend-runtime-malformed-response",
   "device-unsupported-variant",
-  "device-probe-malformed-output"
+  "device-runtime-malformed-response"
 ] as const;
 export type InventoryDiagnosticCode = (typeof INVENTORY_DIAGNOSTIC_CODES)[number];
 
@@ -80,7 +80,6 @@ export interface InventoryDiagnostic {
   deviceId?: string;
   platform?: InventoryPlatform;
   backendKind?: InventoryBackendKind;
-  executablePath?: string | null;
   backendVersion?: string | null;
 }
 
@@ -108,7 +107,6 @@ export interface BackendReadinessRecord {
   platform: InventoryPlatform;
   backendKind: InventoryBackendKind;
   readiness: BackendReadinessState;
-  executablePath: string | null;
   version: string | null;
   checkedAt: string | null;
   diagnostics: readonly InventoryDiagnostic[];

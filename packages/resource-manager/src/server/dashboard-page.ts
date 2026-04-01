@@ -397,10 +397,10 @@ export function renderDashboardPage(): string {
       <section class="hero" aria-labelledby="system-dashboard-title">
         <div class="hero-top">
           <div class="hero-copy">
-            <span class="eyebrow">Read-only system dashboard</span>
+            <span class="eyebrow">Read-only operator dashboard</span>
             <h1 id="system-dashboard-title">System dashboard</h1>
             <p>
-              The resource manager browser entrypoint leads with overall system status, then drills
+              The resource manager browser entrypoint leads with libsigrok runtime truth, then drills
               into occupancy, owner identity, lease timing, and diagnostics without exposing any
               mutating controls beyond a snapshot refresh.
             </p>
@@ -425,7 +425,7 @@ export function renderDashboardPage(): string {
           </p>
           <div class="status-meta">
             <span class="pill" id="provider-summary">Provider unknown</span>
-            <span class="pill" id="backend-summary">Backend unknown</span>
+            <span class="pill" id="backend-summary">Runtime unknown</span>
           </div>
         </section>
 
@@ -460,13 +460,13 @@ export function renderDashboardPage(): string {
           <section class="panel">
             <div class="section-head">
               <div>
-                <p class="meta-note">Backend truth</p>
-                <h2>Backend readiness</h2>
+                <p class="meta-note">Native runtime truth</p>
+                <h2>libsigrok runtime readiness</h2>
               </div>
-              <p class="meta-note">Probe results grouped by platform and backend.</p>
+              <p class="meta-note">Probe results grouped by platform and native runtime state.</p>
             </div>
             <div id="backend-readiness" class="list">
-              <p class="empty">No backend readiness data loaded yet.</p>
+              <p class="empty">No libsigrok runtime readiness data loaded yet.</p>
             </div>
           </section>
 
@@ -587,7 +587,7 @@ function summarizeBackendReadiness(snapshot) {
   if (!snapshot.backendReadiness.length) {
     return {
       value: 'Unknown',
-      detail: 'No backend probes reported',
+      detail: 'No libsigrok runtime probes reported',
       tone: 'attention'
     };
   }
@@ -595,7 +595,7 @@ function summarizeBackendReadiness(snapshot) {
   if (snapshot.overview.backendMissing > 0) {
     return {
       value: 'Missing',
-      detail: snapshot.overview.backendMissing + ' backend ' + pluralize(snapshot.overview.backendMissing, 'probe') + ' missing',
+      detail: snapshot.overview.backendMissing + ' libsigrok runtime ' + pluralize(snapshot.overview.backendMissing, 'probe') + ' missing',
       tone: 'error'
     };
   }
@@ -603,7 +603,7 @@ function summarizeBackendReadiness(snapshot) {
   if (snapshot.overview.backendUnsupported > 0) {
     return {
       value: 'Unsupported',
-      detail: snapshot.overview.backendUnsupported + ' backend ' + pluralize(snapshot.overview.backendUnsupported, 'probe') + ' unsupported',
+      detail: snapshot.overview.backendUnsupported + ' libsigrok runtime ' + pluralize(snapshot.overview.backendUnsupported, 'probe') + ' unsupported',
       tone: 'error'
     };
   }
@@ -611,14 +611,14 @@ function summarizeBackendReadiness(snapshot) {
   if (snapshot.overview.backendDegraded > 0) {
     return {
       value: 'Degraded',
-      detail: snapshot.overview.backendDegraded + ' backend ' + pluralize(snapshot.overview.backendDegraded, 'probe') + ' degraded',
+      detail: snapshot.overview.backendDegraded + ' libsigrok runtime ' + pluralize(snapshot.overview.backendDegraded, 'probe') + ' degraded',
       tone: 'attention'
     };
   }
 
   return {
     value: 'Ready',
-    detail: snapshot.overview.backendReady + ' backend ' + pluralize(snapshot.overview.backendReady, 'probe') + ' ready',
+    detail: snapshot.overview.backendReady + ' libsigrok runtime ' + pluralize(snapshot.overview.backendReady, 'probe') + ' ready',
     tone: 'healthy'
   };
 }
@@ -636,10 +636,10 @@ function summarizeSystemStatus(snapshot) {
   if (snapshot.overview.backendMissing > 0 || snapshot.overview.backendUnsupported > 0) {
     return {
       tone: 'error',
-      label: 'Backend attention required',
+      label: 'Runtime attention required',
       summary: unavailableOrAbnormal > 0
-        ? unavailableOrAbnormal + ' device ' + pluralize(unavailableOrAbnormal, 'entry', 'entries') + ' unavailable or abnormal, plus backend blockers.'
-        : 'Backend blockers are preventing a fully healthy system posture.',
+        ? unavailableOrAbnormal + ' device ' + pluralize(unavailableOrAbnormal, 'entry', 'entries') + ' unavailable or abnormal, plus libsigrok runtime blockers.'
+        : 'libsigrok runtime blockers are preventing a fully healthy system posture.',
       unavailableOrAbnormal,
       backend
     };
@@ -650,8 +650,8 @@ function summarizeSystemStatus(snapshot) {
       tone: 'attention',
       label: 'Attention needed',
       summary: usesSimulatedProvider
-        ? 'A fake provider/backend is serving this snapshot, so hardware readiness is not being probed.'
-        : 'Backend readiness has not reported any probe results yet.',
+        ? 'A fake provider or backend is serving this snapshot, so libsigrok runtime readiness is not being probed.'
+        : 'libsigrok runtime readiness has not reported any probe results yet.',
       unavailableOrAbnormal,
       backend
     };
@@ -677,7 +677,7 @@ function summarizeSystemStatus(snapshot) {
   return {
     tone: 'healthy',
     label: 'Healthy',
-    summary: 'Connected devices, backend readiness, and leases all look nominal.',
+    summary: 'Connected devices, libsigrok runtime readiness, and leases all look nominal.',
     unavailableOrAbnormal,
     backend
   };
@@ -719,7 +719,7 @@ function buildOverviewCards(snapshot) {
       tone: system.unavailableOrAbnormal > 0 ? 'attention' : 'healthy'
     },
     {
-      label: 'Backend readiness',
+      label: 'Runtime readiness',
       value: system.backend.value,
       detail: system.backend.detail,
       tone: system.backend.tone
@@ -883,7 +883,7 @@ function renderDevices(snapshot) {
 
 function renderBackendReadiness(snapshot) {
   if (!snapshot.backendReadiness.length) {
-    backendReadiness.innerHTML = '<p class="empty">No backend readiness diagnostics reported.</p>';
+    backendReadiness.innerHTML = '<p class="empty">No libsigrok runtime diagnostics reported.</p>';
     return;
   }
 
@@ -891,7 +891,7 @@ function renderBackendReadiness(snapshot) {
     .map((backend) => {
       const details = [];
       if (backend.executablePath) {
-        details.push('<span><span class="detail-label">Executable</span><br /><code>' + escapeHtml(backend.executablePath) + '</code></span>');
+        details.push('<span><span class="detail-label">Runtime path</span><br /><code>' + escapeHtml(backend.executablePath) + '</code></span>');
       }
       if (backend.version) {
         details.push('<span><span class="detail-label">Version</span><br />' + escapeHtml(backend.version) + '</span>');
@@ -976,7 +976,7 @@ function applySnapshot(snapshot, sourceLabel) {
   systemStatusPill.textContent = system.label;
   systemStatusSummary.textContent = system.summary;
   providerSummary.textContent = summarizeScope('Provider', snapshot.inventoryScope?.providerKinds, 'unknown');
-  backendSummary.textContent = summarizeScope('Backend', snapshot.inventoryScope?.backendKinds, 'unknown');
+  backendSummary.textContent = summarizeScope('Runtime', snapshot.inventoryScope?.backendKinds, 'unknown');
 }
 
 async function loadSnapshot(sourceLabel = 'Updated') {
@@ -1002,7 +1002,7 @@ async function loadSnapshot(sourceLabel = 'Updated') {
     systemStatusSummary.textContent = message;
     deviceSummary.textContent = 'Device occupancy unavailable';
     deviceCards.innerHTML = '<p class="empty">Device occupancy could not be loaded.</p>';
-    backendReadiness.innerHTML = '<p class="empty">Backend readiness unavailable.</p>';
+    backendReadiness.innerHTML = '<p class="empty">libsigrok runtime readiness unavailable.</p>';
     diagnostics.innerHTML = '<article class="list-item"><div class="list-item-head"><strong>dashboard-load-failed</strong><span class="badge error">error</span></div><div>' + escapeHtml(message) + '</div></article>';
     setStreamStatus('error', 'Snapshot fetch failed');
   } finally {

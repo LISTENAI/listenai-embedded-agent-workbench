@@ -32,7 +32,7 @@ const readyClassicDevice: DeviceRecord = {
   readiness: "ready",
   diagnostics: [],
   providerKind: "dslogic",
-  backendKind: "dsview",
+  backendKind: "libsigrok",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -60,11 +60,11 @@ const unsupportedPangoDevice: DeviceRecord = {
       target: "device",
       message: "Variant V421/Pango (2a0e:0030) is not supported.",
       deviceId: "logic-pango",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
     },
   ],
   providerKind: "dslogic",
-  backendKind: "dsview",
+  backendKind: "libsigrok",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -76,17 +76,19 @@ const unsupportedPangoDevice: DeviceRecord = {
 };
 
 const mixedDslogicSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: DSLOGIC_REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"],
+  },
   devices: [readyClassicDevice, unsupportedPangoDevice],
   backendReadiness: [
     {
       platform: "linux",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "ready",
-      executablePath: "/usr/bin/dsview",
-      version: "1.3.1",
+      executablePath: "/usr/local/lib/libsigrok.so",
+      version: "libsigrok 0.6.0",
       checkedAt: DSLOGIC_REFRESHED_AT,
       diagnostics: [],
     },
@@ -95,27 +97,28 @@ const mixedDslogicSnapshot: InventorySnapshot = {
 };
 
 const backendMissingSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: DSLOGIC_REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"],
+  },
   devices: [],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "missing",
       executablePath: null,
       version: null,
       checkedAt: DSLOGIC_REFRESHED_AT,
       diagnostics: [
         {
-          code: "backend-missing-executable",
+          code: "backend-missing-runtime",
           severity: "error",
           target: "backend",
-          message: "DSView executable dsview was not found on macos.",
+          message: "libsigrok runtime is not available on macos.",
           platform: "macos",
-          backendKind: "dsview",
-          executablePath: null,
+          backendKind: "libsigrok",
           backendVersion: null,
         },
       ],
@@ -123,13 +126,12 @@ const backendMissingSnapshot: InventorySnapshot = {
   ],
   diagnostics: [
     {
-      code: "backend-missing-executable",
+      code: "backend-missing-runtime",
       severity: "error",
       target: "backend",
-      message: "DSView executable dsview was not found on macos.",
+      message: "libsigrok runtime is not available on macos.",
       platform: "macos",
-      backendKind: "dsview",
-      executablePath: null,
+      backendKind: "libsigrok",
       backendVersion: null,
     },
   ],

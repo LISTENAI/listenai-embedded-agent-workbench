@@ -12,8 +12,8 @@ import type {
 
 export const LIVE_CAPTURE_FAILURE_PHASES = [
   "validate-session",
-  "spawn-runner",
-  "await-runner",
+  "prepare-runtime",
+  "capture",
   "collect-artifact"
 ] as const;
 export type LiveCaptureFailurePhase =
@@ -21,8 +21,8 @@ export type LiveCaptureFailurePhase =
 
 export const LIVE_CAPTURE_FAILURE_KINDS = [
   "unsupported-runtime",
-  "spawn-failed",
-  "runner-exited",
+  "runtime-unavailable",
+  "capture-failed",
   "timeout",
   "aborted",
   "malformed-output"
@@ -69,7 +69,7 @@ export interface LiveCaptureArtifactSummary {
   hasText: boolean;
 }
 
-export interface LiveCaptureRunnerOutputSummary {
+export interface LiveCaptureStreamSummary {
   kind: "empty" | "text" | "bytes";
   byteLength: number;
   textLength: number | null;
@@ -81,13 +81,11 @@ export interface LiveCaptureFailureDiagnostics {
   phase: LiveCaptureFailurePhase;
   providerKind: InventoryProviderKind | null;
   backendKind: InventoryBackendKind | null;
-  executablePath: string | null;
-  command: readonly string[];
+  backendVersion: string | null;
   timeoutMs: number | null;
-  exitCode: number | null;
-  signal: string | null;
-  stdout: LiveCaptureRunnerOutputSummary | null;
-  stderr: LiveCaptureRunnerOutputSummary | null;
+  nativeCode: string | null;
+  captureOutput: LiveCaptureStreamSummary | null;
+  diagnosticOutput: LiveCaptureStreamSummary | null;
   details: readonly string[];
   diagnostics: readonly InventoryDiagnostic[];
 }

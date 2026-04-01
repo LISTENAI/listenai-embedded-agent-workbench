@@ -8,8 +8,8 @@ import type {
   LiveCaptureFailurePhase,
   LiveCaptureRequest,
   LiveCaptureResult,
-  LiveCaptureRunnerOutputSummary,
   LiveCaptureSession,
+  LiveCaptureStreamSummary,
   LiveCaptureSuccess
 } from "@listenai/contracts";
 import type { LiveCaptureProvider } from "../device-provider.js";
@@ -17,51 +17,24 @@ import {
   DSLOGIC_BACKEND_KIND,
   DSLOGIC_PROVIDER_KIND
 } from "./backend-probe.js";
+import {
+  createDslogicNativeLiveCaptureBackend,
+  type DslogicNativeCaptureFailure,
+  type DslogicNativeCaptureStreamValue,
+  type DslogicNativeLiveCaptureBackend
+} from "./native-runtime.js";
 
 const PREVIEW_LIMIT = 160;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_CHANNEL_COUNT = 16;
 
-interface RunnerStreamValue {
-  text?: string;
-  bytes?: Uint8Array;
-}
+export type DslogicLiveCaptureRunner = DslogicNativeLiveCaptureBackend;
 
-export interface DslogicRunnerSuccess {
-  ok: true;
-  executablePath?: string | null;
-  command?: readonly string[];
-  stdout?: RunnerStreamValue;
-  stderr?: RunnerStreamValue;
-  artifact: LiveCaptureArtifact;
-}
+export type CaptureLiveDslogicOptions =
+  | { nativeCapture: DslogicNativeLiveCaptureBackend }
+  | { runner: DslogicLiveCaptureRunner };
 
-export interface DslogicRunnerFailure {
-  ok: false;
-  kind: Exclude<LiveCaptureFailureKind, "unsupported-runtime">;
-  phase: Exclude<LiveCaptureFailurePhase, "validate-session">;
-  message: string;
-  executablePath?: string | null;
-  command?: readonly string[];
-  timeoutMs?: number;
-  exitCode?: number | null;
-  signal?: string | null;
-  stdout?: RunnerStreamValue;
-  stderr?: RunnerStreamValue;
-  details?: readonly string[];
-}
-
-export type DslogicRunnerResult = DslogicRunnerSuccess | DslogicRunnerFailure;
-
-export interface DslogicLiveCaptureRunner {
-  run(request: LiveCaptureRequest): Promise<DslogicRunnerResult>;
-}
-
-export interface CaptureLiveDslogicOptions {
-  runner: DslogicLiveCaptureRunner;
-}
-
-const readText = (value: RunnerStreamValue | undefined): string | null => {
+const readText = (value: DslogicNativeCaptureStreamValue | undefined): string | null => {
   if (!value) {
     return null;
   }
@@ -77,7 +50,7 @@ const readText = (value: RunnerStreamValue | undefined): string | null => {
   return null;
 };
 
-const getByteLength = (value: RunnerStreamValue | undefined): number => {
+const getByteLength = (value: DslogicNativeCaptureStreamValue | undefined): number => {
   if (!value) {
     return 0;
   }
@@ -93,9 +66,9 @@ const getByteLength = (value: RunnerStreamValue | undefined): number => {
   return 0;
 };
 
-const summarizeRunnerStream = (
-  value: RunnerStreamValue | undefined
-): LiveCaptureRunnerOutputSummary | null => {
+const summarizeCaptureStream = (
+  value: DslogicNativeCaptureStreamValue | undefined
+): LiveCaptureStreamSummary | null => {
   if (!value) {
     return null;
   }
@@ -165,13 +138,11 @@ const buildFailure = (
     phase,
     providerKind: request.session.device.providerKind ?? null,
     backendKind: request.session.device.backendKind ?? null,
-    executablePath: overrides.executablePath ?? null,
-    command: overrides.command ?? [],
+    backendVersion: overrides.backendVersion ?? null,
     timeoutMs: overrides.timeoutMs ?? request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    exitCode: overrides.exitCode ?? null,
-    signal: overrides.signal ?? null,
-    stdout: overrides.stdout ?? null,
-    stderr: overrides.stderr ?? null,
+    nativeCode: overrides.nativeCode ?? null,
+    captureOutput: overrides.captureOutput ?? null,
+    diagnosticOutput: overrides.diagnosticOutput ?? null,
     details: overrides.details ?? [],
     diagnostics: overrides.diagnostics ?? request.session.device.diagnostics ?? []
   }
@@ -217,7 +188,7 @@ const validateSession = (
     request,
     "unsupported-runtime",
     "validate-session",
-    "Live capture request is not compatible with the DSLogic runtime seam.",
+    "Live capture request is not compatible with the DSLogic native runtime seam.",
     {
       details
     }
@@ -237,20 +208,23 @@ const toSuccess = (
   artifactSummary: summarizeArtifact(artifact)
 });
 
-const toFailureFromRunner = (
+const toFailureFromNative = (
   request: LiveCaptureRequest,
-  failure: DslogicRunnerFailure
+  failure: DslogicNativeCaptureFailure
 ): LiveCaptureFailure =>
   buildFailure(request, failure.kind, failure.phase, failure.message, {
-    executablePath: failure.executablePath ?? null,
-    command: failure.command ?? [],
+    backendVersion: failure.backendVersion ?? null,
     timeoutMs: failure.timeoutMs ?? request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    exitCode: failure.exitCode ?? null,
-    signal: failure.signal ?? null,
-    stdout: summarizeRunnerStream(failure.stdout),
-    stderr: summarizeRunnerStream(failure.stderr),
+    nativeCode: failure.nativeCode ?? null,
+    captureOutput: summarizeCaptureStream(failure.captureOutput),
+    diagnosticOutput: summarizeCaptureStream(failure.diagnosticOutput),
     details: failure.details ?? []
   });
+
+const resolveNativeCapture = (
+  options: CaptureLiveDslogicOptions
+): DslogicNativeLiveCaptureBackend =>
+  "nativeCapture" in options ? options.nativeCapture : options.runner;
 
 export const captureDslogicLive = async (
   request: LiveCaptureRequest,
@@ -261,23 +235,22 @@ export const captureDslogicLive = async (
     return validationFailure;
   }
 
-  const runnerResult = await options.runner.run(request);
-  if (!runnerResult.ok) {
-    return toFailureFromRunner(request, runnerResult);
+  const nativeCapture = resolveNativeCapture(options);
+  const nativeResult = await nativeCapture.capture(request);
+  if (!nativeResult.ok) {
+    return toFailureFromNative(request, nativeResult);
   }
 
-  if (!hasUsableArtifactPayload(runnerResult.artifact)) {
+  if (!hasUsableArtifactPayload(nativeResult.artifact)) {
     return buildFailure(
       request,
       "malformed-output",
       "collect-artifact",
-      "Runner reported success but did not return a usable artifact payload.",
+      "Native capture reported success but did not return a usable artifact payload.",
       {
-        executablePath: runnerResult.executablePath ?? null,
-        command: runnerResult.command ?? [],
-        stdout: summarizeRunnerStream(runnerResult.stdout),
-        stderr: summarizeRunnerStream(runnerResult.stderr),
-        artifactSummary: summarizeArtifact(runnerResult.artifact),
+        backendVersion: nativeResult.backendVersion ?? null,
+        diagnosticOutput: summarizeCaptureStream(nativeResult.diagnosticOutput),
+        artifactSummary: summarizeArtifact(nativeResult.artifact),
         details: [
           "Expected artifact.text or artifact.bytes to contain non-empty capture data."
         ]
@@ -285,7 +258,7 @@ export const captureDslogicLive = async (
     );
   }
 
-  return toSuccess(request, runnerResult.artifact);
+  return toSuccess(request, nativeResult.artifact);
 };
 
 export const supportsDslogicLiveCapture = (
@@ -295,15 +268,19 @@ export const supportsDslogicLiveCapture = (
   device.backendKind === DSLOGIC_BACKEND_KIND;
 
 export const createDslogicLiveCaptureProvider = (
-  runner: DslogicLiveCaptureRunner
+  nativeCapture: DslogicNativeLiveCaptureBackend
 ): LiveCaptureProvider => ({
   supportsDevice: supportsDslogicLiveCapture,
-  liveCapture: (request) => captureDslogicLive(request, { runner })
+  liveCapture: (request) => captureDslogicLive(request, { nativeCapture })
 });
 
 export const createDslogicLiveCaptureRunner = (
-  run: DslogicLiveCaptureRunner["run"]
-): DslogicLiveCaptureRunner => ({ run });
+  capture: DslogicNativeLiveCaptureBackend["capture"]
+): DslogicLiveCaptureRunner => createDslogicNativeLiveCaptureBackend(capture);
+
+export const createDslogicNativeLiveCapture = (
+  capture: DslogicNativeLiveCaptureBackend["capture"]
+): DslogicNativeLiveCaptureBackend => createDslogicNativeLiveCaptureBackend(capture);
 
 export const createLiveCaptureRequest = (
   session: LiveCaptureSession,

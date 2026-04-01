@@ -157,13 +157,11 @@ const buildUnsupportedFakeCapture = (
     phase: "validate-session",
     providerKind: request.session.device.providerKind ?? null,
     backendKind: request.session.device.backendKind ?? null,
-    executablePath: null,
-    command: [],
+    backendVersion: null,
     timeoutMs: request.timeoutMs ?? null,
-    exitCode: null,
-    signal: null,
-    stdout: null,
-    stderr: null,
+    nativeCode: null,
+    captureOutput: null,
+    diagnosticOutput: null,
     details: [
       "Fake provider inventory can drive allocation flows but does not implement live capture.",
       "Use the DSLogic provider/backend to exercise real live capture."

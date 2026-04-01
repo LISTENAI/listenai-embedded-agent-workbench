@@ -8,9 +8,11 @@ import { renderDashboardScript } from "../packages/resource-manager/src/server/d
 const REFRESHED_AT = "2026-03-31T04:00:00.000Z";
 
 const healthySnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
   refreshedAt: REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"]
+  },
   devices: [
     {
       deviceId: "logic-ready",
@@ -24,7 +26,12 @@ const healthySnapshot: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "logic-ready",
+        canonicalKey: "dslogic:logic-ready"
+      },
       dslogic: {
         family: "dslogic",
         model: "dslogic-plus",
@@ -38,10 +45,10 @@ const healthySnapshot: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "linux",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "ready",
-      executablePath: "/usr/bin/dsview",
-      version: "1.3.1",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+      version: "0.6.0",
       checkedAt: REFRESHED_AT,
       diagnostics: []
     }
@@ -49,27 +56,98 @@ const healthySnapshot: InventorySnapshot = {
   diagnostics: []
 };
 
-const backendMissingSnapshot: InventorySnapshot = {
-  providerKind: "dslogic",
-  backendKind: "dsview",
+const backendDegradedSnapshot: InventorySnapshot = {
   refreshedAt: REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"]
+  },
+  devices: [
+    {
+      deviceId: "logic-slow-probe",
+      label: "DSLogic Probe Slow",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: REFRESHED_AT,
+      updatedAt: REFRESHED_AT,
+      readiness: "degraded",
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "device",
+          message: "Capture path is slower than expected.",
+          deviceId: "logic-slow-probe",
+          backendKind: "libsigrok"
+        }
+      ],
+      providerKind: "dslogic",
+      backendKind: "libsigrok",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "logic-slow-probe",
+        canonicalKey: "dslogic:logic-slow-probe"
+      },
+      dslogic: null
+    }
+  ],
+  backendReadiness: [
+    {
+      platform: "linux",
+      backendKind: "libsigrok",
+      readiness: "degraded",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
+      version: "0.6.0",
+      checkedAt: REFRESHED_AT,
+      diagnostics: [
+        {
+          code: "backend-probe-timeout",
+          severity: "warning",
+          target: "backend",
+          message: "libsigrok probe timed out before readiness was confirmed on linux.",
+          platform: "linux",
+          backendKind: "libsigrok"
+        }
+      ]
+    }
+  ],
+  diagnostics: [
+    {
+      code: "backend-probe-timeout",
+      severity: "warning",
+      target: "backend",
+      message: "libsigrok probe timed out before readiness was confirmed on linux.",
+      platform: "linux",
+      backendKind: "libsigrok"
+    }
+  ]
+};
+
+const backendMissingSnapshot: InventorySnapshot = {
+  refreshedAt: REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"]
+  },
   devices: [],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "missing",
       executablePath: null,
       version: null,
       checkedAt: REFRESHED_AT,
       diagnostics: [
         {
-          code: "backend-missing-executable",
+          code: "backend-missing-runtime",
           severity: "error",
           target: "backend",
-          message: "DSView executable dsview was not found on macos.",
+          message: "libsigrok runtime is not available on macos.",
           platform: "macos",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           executablePath: null,
           backendVersion: null
         }
@@ -78,12 +156,12 @@ const backendMissingSnapshot: InventorySnapshot = {
   ],
   diagnostics: [
     {
-      code: "backend-missing-executable",
+      code: "backend-missing-runtime",
       severity: "error",
       target: "backend",
-      message: "DSView executable dsview was not found on macos.",
+      message: "libsigrok runtime is not available on macos.",
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       executablePath: null,
       backendVersion: null
     }
@@ -370,13 +448,13 @@ describe("resource-manager dashboard browser truth", () => {
           expect(harness.elements["#system-status-pill"].textContent).toBe("Healthy");
           expect(harness.elements["#system-status-pill"].dataset.state).toBe("healthy");
           expect(harness.elements["#provider-summary"].textContent).toBe("Provider dslogic");
-          expect(harness.elements["#backend-summary"].textContent).toBe("Backend dsview");
+          expect(harness.elements["#backend-summary"].textContent).toBe("Runtime libsigrok");
           expect(harness.elements["#last-updated"].textContent).toMatch(/(Initial snapshot|Live initial) at/);
           expectHtmlToContain(harness.elements["#overview"], "Connected");
           expectHtmlToContain(harness.elements["#overview"], "Ready");
           expectHtmlToContain(harness.elements["#device-cards"], "DSLogic Plus Ready");
           expectHtmlToContain(harness.elements["#device-cards"], "available");
-          expectHtmlToContain(harness.elements["#backend-readiness"], "/usr/bin/dsview");
+          expectHtmlToContain(harness.elements["#backend-readiness"], "/opt/homebrew/lib/libsigrok.dylib");
           expect(harness.elements["#diagnostics"].innerHTML).toContain("No global diagnostics reported.");
         });
 
@@ -388,6 +466,49 @@ describe("resource-manager dashboard browser truth", () => {
           activeLeases: 0,
           backendReady: 1,
           backendMissing: 0,
+        });
+      } finally {
+        await harness.close();
+      }
+    });
+  });
+
+  it("surfaces degraded libsigrok runtime truth without drifting back to a healthy posture", async () => {
+    await withDashboardServer(healthySnapshot, async ({ url, provider }) => {
+      const harness = await createDashboardHarness(url);
+
+      try {
+        await waitFor(() => {
+          expect(harness.elements["#system-status-pill"].textContent).toBe("Healthy");
+        });
+
+        provider.setInventorySnapshot(backendDegradedSnapshot);
+        const refreshed = await fetchJson<InventorySnapshot>(`${url}/inventory/refresh`, {
+          method: "POST",
+        });
+        expect(refreshed.backendReadiness[0]?.readiness).toBe("degraded");
+
+        await waitFor(async () => {
+          const snapshot = await fetchJson<DashboardSnapshot>(`${url}/dashboard-snapshot`);
+          expect(snapshot.overview).toMatchObject({
+            totalDevices: 1,
+            degradedDevices: 1,
+            backendReady: 0,
+            backendDegraded: 1,
+          });
+          expect(harness.elements["#system-status-pill"].dataset.state).toBe("attention");
+          expect(harness.elements["#system-status-pill"].textContent).toBe("Attention needed");
+          expect(harness.elements["#system-status-summary"].textContent).toContain(
+            "device entry unavailable or abnormal"
+          );
+          expect(harness.elements["#backend-summary"].textContent).toBe("Runtime libsigrok");
+          expectHtmlToContain(harness.elements["#backend-readiness"], "backend-probe-timeout");
+          expectHtmlToContain(harness.elements["#backend-readiness"], "degraded");
+          expectHtmlToContain(
+            harness.elements["#diagnostics"],
+            "libsigrok probe timed out before readiness was confirmed on linux."
+          );
+          expect(harness.elements["#system-status-pill"].textContent).not.toBe("Healthy");
         });
       } finally {
         await harness.close();
@@ -492,11 +613,11 @@ describe("resource-manager dashboard browser truth", () => {
           });
           expect(harness.elements["#stream-status"].textContent).toBe("Live stream connected");
           expect(harness.elements["#system-status-pill"].dataset.state).toBe("error");
-          expect(harness.elements["#system-status-pill"].textContent).toBe("Backend attention required");
-          expect(harness.elements["#system-status-summary"].textContent).toContain("Backend blockers");
-          expectHtmlToContain(harness.elements["#backend-readiness"], "backend-missing-executable");
+          expect(harness.elements["#system-status-pill"].textContent).toBe("Runtime attention required");
+          expect(harness.elements["#system-status-summary"].textContent).toContain("libsigrok runtime blockers");
+          expectHtmlToContain(harness.elements["#backend-readiness"], "backend-missing-runtime");
           expectHtmlToContain(harness.elements["#backend-readiness"], "missing");
-          expectHtmlToContain(harness.elements["#diagnostics"], "DSView executable dsview was not found on macos.");
+          expectHtmlToContain(harness.elements["#diagnostics"], "libsigrok runtime is not available on macos.");
           expect(harness.elements["#device-summary"].textContent).toContain("0 supported devices");
           expect(harness.elements["#system-status-pill"].textContent).not.toBe("Healthy");
         });

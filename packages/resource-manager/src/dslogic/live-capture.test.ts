@@ -5,7 +5,7 @@ import {
   LIVE_CAPTURE_FAILURE_PHASES,
   captureDslogicLive,
   createDslogicLiveCaptureProvider,
-  createDslogicLiveCaptureRunner,
+  createDslogicNativeLiveCapture,
   createLiveCaptureRequest,
   type LiveCaptureFailure,
   type LiveCaptureRequest,
@@ -37,7 +37,7 @@ const createSession = (channelCount = 2): LiveCaptureSession => ({
     readiness: "ready",
     diagnostics: [],
     providerKind: "dslogic",
-    backendKind: "dsview",
+    backendKind: "libsigrok",
     dslogic: {
       family: "dslogic",
       model: "dslogic-plus",
@@ -58,14 +58,14 @@ describe("DSLogic live capture seam", () => {
   it("exposes typed live capture contracts through the root barrel", () => {
     expect(LIVE_CAPTURE_FAILURE_PHASES).toEqual([
       "validate-session",
-      "spawn-runner",
-      "await-runner",
+      "prepare-runtime",
+      "capture",
       "collect-artifact"
     ]);
     expect(LIVE_CAPTURE_FAILURE_KINDS).toEqual([
       "unsupported-runtime",
-      "spawn-failed",
-      "runner-exited",
+      "runtime-unavailable",
+      "capture-failed",
       "timeout",
       "aborted",
       "malformed-output"
@@ -101,8 +101,9 @@ describe("DSLogic live capture seam", () => {
       kind: (typeof LIVE_CAPTURE_FAILURE_KINDS)[number];
       diagnostics: {
         phase: (typeof LIVE_CAPTURE_FAILURE_PHASES)[number];
+        backendVersion: string | null;
         timeoutMs: number | null;
-        exitCode: number | null;
+        nativeCode: string | null;
       };
     }>();
 
@@ -111,23 +112,23 @@ describe("DSLogic live capture seam", () => {
     >();
   });
 
-  it("creates a provider-dispatched DSLogic live capture adapter", async () => {
+  it("creates a provider-dispatched DSLogic native live capture adapter", async () => {
     const request = createLiveCaptureRequest(createSession(2));
     let capturedRequest: LiveCaptureRequest | undefined;
-    const liveCapture = createDslogicLiveCaptureProvider(
-      createDslogicLiveCaptureRunner(async (incomingRequest) => {
-        capturedRequest = incomingRequest;
-        return {
-          ok: true,
-          artifact: {
-            sourceName: "logic-1.csv",
-            formatHint: "sigrok-csv",
-            mediaType: "text/csv",
-            text: "Time [us],D0,D1\n0,0,1\n"
-          }
-        };
-      })
-    );
+    const nativeCapture = createDslogicNativeLiveCapture(async (incomingRequest) => {
+      capturedRequest = incomingRequest;
+      return {
+        ok: true,
+        backendVersion: "libsigrok 0.5.2",
+        artifact: {
+          sourceName: "logic-1.csv",
+          formatHint: "sigrok-csv",
+          mediaType: "text/csv",
+          text: "Time [us],D0,D1\n0,0,1\n"
+        }
+      };
+    });
+    const liveCapture = createDslogicLiveCaptureProvider(nativeCapture);
 
     expect(liveCapture.supportsDevice(request.session.device)).toBe(true);
     expect(
@@ -143,7 +144,7 @@ describe("DSLogic live capture seam", () => {
     expect(result).toMatchObject({
       ok: true,
       providerKind: "dslogic",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     });
   });
 
@@ -153,11 +154,10 @@ describe("DSLogic live capture seam", () => {
       requestedAt: "2026-03-30T10:00:05.000Z",
       timeoutMs: 2_000
     });
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: true,
-      executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-      command: ["dsview", "--capture", "logic-1"],
-      stdout: { text: "capture ready" },
+      backendVersion: "libsigrok 0.5.2",
+      diagnosticOutput: { text: "capture ready" },
       artifact: {
         sourceName: "logic-1.csv",
         formatHint: "sigrok-csv",
@@ -167,12 +167,12 @@ describe("DSLogic live capture seam", () => {
       }
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toEqual({
       ok: true,
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       session: request.session,
       requestedAt: "2026-03-30T10:00:05.000Z",
       artifact: {
@@ -198,7 +198,7 @@ describe("DSLogic live capture seam", () => {
     const session = createSession(16);
     const request = createLiveCaptureRequest(session);
     const artifactBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: true,
       artifact: {
         sourceName: "logic-1.sr",
@@ -208,7 +208,7 @@ describe("DSLogic live capture seam", () => {
       }
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -226,19 +226,20 @@ describe("DSLogic live capture seam", () => {
   });
 
   it("returns unsupported-runtime when accepted-session runtime facts are missing", async () => {
+    const session = createSession(2);
     const request = createLiveCaptureRequest({
-      ...createSession(2),
+      ...session,
       device: {
-        ...createSession(2).device,
+        ...session.device,
         backendKind: undefined,
         dslogic: null
       }
     });
-    const runner = createDslogicLiveCaptureRunner(async () => {
-      throw new Error("runner should not be called for invalid session context");
+    const nativeCapture = createDslogicNativeLiveCapture(async () => {
+      throw new Error("capture backend should not be called for invalid session context");
     });
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toMatchObject({
       ok: false,
@@ -247,89 +248,93 @@ describe("DSLogic live capture seam", () => {
       diagnostics: {
         phase: "validate-session",
         backendKind: null,
-        providerKind: "dslogic"
+        providerKind: "dslogic",
+        backendVersion: null,
+        nativeCode: null,
+        captureOutput: null,
+        diagnosticOutput: null
       }
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.diagnostics.details).toEqual([
-        "Expected backendKind dsview.",
+        "Expected backendKind libsigrok.",
         "Accepted live capture sessions must include DSLogic identity details."
       ]);
+      expect("executablePath" in result.diagnostics).toBe(false);
+      expect("command" in result.diagnostics).toBe(false);
     }
   });
 
-  it("returns spawn-failed when the runner cannot be started", async () => {
+  it("returns runtime-unavailable when the native backend cannot be prepared", async () => {
     const request = createLiveCaptureRequest(createSession(2));
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: false,
-      kind: "spawn-failed",
-      phase: "spawn-runner",
-      message: "Failed to spawn DSView backend process.",
-      executablePath: "/usr/local/bin/dsview",
-      command: ["dsview", "--capture", "logic-1"],
-      details: ["ENOENT"]
+      kind: "runtime-unavailable",
+      phase: "prepare-runtime",
+      message: "libsigrok runtime is not available on macos.",
+      backendVersion: null,
+      nativeCode: "backend-missing-runtime",
+      details: ["libsigrok library path could not be resolved."]
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toEqual({
       ok: false,
       reason: "capture-failed",
-      kind: "spawn-failed",
-      message: "Failed to spawn DSView backend process.",
+      kind: "runtime-unavailable",
+      message: "libsigrok runtime is not available on macos.",
       session: request.session,
       requestedAt: request.session.startedAt,
       artifactSummary: null,
       diagnostics: {
-        phase: "spawn-runner",
+        phase: "prepare-runtime",
         providerKind: "dslogic",
-        backendKind: "dsview",
-        executablePath: "/usr/local/bin/dsview",
-        command: ["dsview", "--capture", "logic-1"],
+        backendKind: "libsigrok",
+        backendVersion: null,
         timeoutMs: 15000,
-        exitCode: null,
-        signal: null,
-        stdout: null,
-        stderr: null,
-        details: ["ENOENT"],
+        nativeCode: "backend-missing-runtime",
+        captureOutput: null,
+        diagnosticOutput: null,
+        details: ["libsigrok library path could not be resolved."],
         diagnostics: []
       }
     });
   });
 
-  it("returns a dedicated timeout failure with bounded runner diagnostics", async () => {
+  it("returns a dedicated timeout failure with bounded native capture diagnostics", async () => {
     const request = createLiveCaptureRequest(createSession(2), {
       timeoutMs: 3_000
     });
-    const runnerStdout = "capturing\nwaiting for trigger\n" + "x".repeat(300);
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const captureOutput = "capturing\nwaiting for trigger\n" + "x".repeat(300);
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: false,
       kind: "timeout",
-      phase: "await-runner",
-      message: "DSView capture timed out.",
-      executablePath: "/usr/local/bin/dsview",
-      command: ["dsview", "--capture", "logic-1"],
+      phase: "capture",
+      message: "libsigrok capture timed out.",
+      backendVersion: "libsigrok 0.5.2",
       timeoutMs: 3_000,
-      stdout: { text: runnerStdout },
-      stderr: { text: "still waiting" }
+      captureOutput: { text: captureOutput },
+      diagnosticOutput: { text: "still waiting" }
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toMatchObject({
       ok: false,
       reason: "capture-failed",
       kind: "timeout",
       diagnostics: {
-        phase: "await-runner",
+        phase: "capture",
+        backendVersion: "libsigrok 0.5.2",
         timeoutMs: 3_000,
-        stdout: {
+        captureOutput: {
           kind: "text",
-          preview: runnerStdout.slice(0, 160),
+          preview: captureOutput.slice(0, 160),
           truncated: true
         },
-        stderr: {
+        diagnosticOutput: {
           kind: "text",
           preview: "still waiting",
           truncated: false
@@ -338,28 +343,29 @@ describe("DSLogic live capture seam", () => {
     });
   });
 
-  it("returns runner-exited when the backend exits non-zero", async () => {
+  it("returns capture-failed when the native backend exits with a concrete error code", async () => {
     const request = createLiveCaptureRequest(createSession(2));
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: false,
-      kind: "runner-exited",
-      phase: "await-runner",
-      message: "DSView exited with a non-zero status.",
-      exitCode: 23,
-      signal: null,
-      stderr: { text: "device busy" }
+      kind: "capture-failed",
+      phase: "capture",
+      message: "libsigrok failed to arm the device.",
+      backendVersion: "libsigrok 0.5.2",
+      nativeCode: "SR_ERR_BUSY",
+      diagnosticOutput: { text: "device busy" }
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toMatchObject({
       ok: false,
       reason: "capture-failed",
-      kind: "runner-exited",
+      kind: "capture-failed",
       diagnostics: {
-        phase: "await-runner",
-        exitCode: 23,
-        stderr: {
+        phase: "capture",
+        backendVersion: "libsigrok 0.5.2",
+        nativeCode: "SR_ERR_BUSY",
+        diagnosticOutput: {
           kind: "text",
           preview: "device busy"
         }
@@ -367,12 +373,12 @@ describe("DSLogic live capture seam", () => {
     });
   });
 
-  it("returns malformed-output when the backend claims success but omits artifact data", async () => {
+  it("returns malformed-output when the native backend claims success but omits artifact data", async () => {
     const request = createLiveCaptureRequest(createSession(2));
-    const runner = createDslogicLiveCaptureRunner(async () => ({
+    const nativeCapture = createDslogicNativeLiveCapture(async () => ({
       ok: true,
-      command: ["dsview", "--capture", "logic-1"],
-      stdout: { text: "capture complete" },
+      backendVersion: "libsigrok 0.5.2",
+      diagnosticOutput: { text: "capture complete" },
       artifact: {
         sourceName: "logic-1.csv",
         formatHint: "sigrok-csv",
@@ -380,13 +386,13 @@ describe("DSLogic live capture seam", () => {
       }
     }));
 
-    const result = await captureDslogicLive(request, { runner });
+    const result = await captureDslogicLive(request, { nativeCapture });
 
     expect(result).toEqual({
       ok: false,
       reason: "capture-failed",
       kind: "malformed-output",
-      message: "Runner reported success but did not return a usable artifact payload.",
+      message: "Native capture reported success but did not return a usable artifact payload.",
       session: request.session,
       requestedAt: request.session.startedAt,
       artifactSummary: {
@@ -401,20 +407,18 @@ describe("DSLogic live capture seam", () => {
       diagnostics: {
         phase: "collect-artifact",
         providerKind: "dslogic",
-        backendKind: "dsview",
-        executablePath: null,
-        command: ["dsview", "--capture", "logic-1"],
+        backendKind: "libsigrok",
+        backendVersion: "libsigrok 0.5.2",
         timeoutMs: 15000,
-        exitCode: null,
-        signal: null,
-        stdout: {
+        nativeCode: null,
+        captureOutput: null,
+        diagnosticOutput: {
           kind: "text",
           byteLength: 16,
           textLength: 16,
           preview: "capture complete",
           truncated: false
         },
-        stderr: null,
         details: [
           "Expected artifact.text or artifact.bytes to contain non-empty capture data."
         ],

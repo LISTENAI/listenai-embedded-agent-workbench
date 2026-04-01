@@ -20,6 +20,7 @@ const cloneSnapshot = (
   snapshot: DslogicBackendProbeSnapshot
 ): DslogicBackendProbeSnapshot => ({
   ...snapshot,
+  host: { ...snapshot.host },
   backend: { ...snapshot.backend },
   devices: snapshot.devices.map(cloneCandidate),
   diagnostics: snapshot.diagnostics.map(cloneDiagnostic)
@@ -28,25 +29,37 @@ const cloneSnapshot = (
 export const createDslogicProbeSnapshot = (options: {
   checkedAt?: string
   platform?: DslogicBackendProbeSnapshot["platform"]
+  os?: string
+  arch?: string
   backendState?: DslogicProbeBackendState
-  executablePath?: string | null
+  libraryPath?: string | null
   version?: string | null
   devices?: readonly DslogicProbeDeviceCandidate[]
   diagnostics?: readonly DslogicProbeDiagnostic[]
-} = {}): DslogicBackendProbeSnapshot => ({
-  platform: options.platform ?? "macos",
-  checkedAt: options.checkedAt ?? "2026-03-30T00:00:00.000Z",
-  backend: {
-    state: options.backendState ?? "ready",
-    executablePath:
-      options.executablePath !== undefined
-        ? options.executablePath
-        : "/Applications/DSView.app/Contents/MacOS/dsview",
-    version: options.version !== undefined ? options.version : "1.3.1"
-  },
-  devices: (options.devices ?? []).map(cloneCandidate),
-  diagnostics: (options.diagnostics ?? []).map(cloneDiagnostic)
-})
+} = {}): DslogicBackendProbeSnapshot => {
+  const platform = options.platform ?? "macos"
+  const os =
+    options.os ??
+    (platform === "macos" ? "darwin" : platform === "windows" ? "win32" : "linux")
+
+  return {
+    platform,
+    checkedAt: options.checkedAt ?? "2026-03-30T00:00:00.000Z",
+    host: {
+      platform,
+      os,
+      arch: options.arch ?? "x64"
+    },
+    backend: {
+      state: options.backendState ?? "ready",
+      libraryPath:
+        options.libraryPath !== undefined ? options.libraryPath : "/usr/local/lib/libsigrok.so",
+      version: options.version !== undefined ? options.version : "0.6.0"
+    },
+    devices: (options.devices ?? []).map(cloneCandidate),
+    diagnostics: (options.diagnostics ?? []).map(cloneDiagnostic)
+  }
+}
 
 export const createClassicDslogicCandidate = (
   overrides: Partial<DslogicProbeDeviceCandidate> = {}

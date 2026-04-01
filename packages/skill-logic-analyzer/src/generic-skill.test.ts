@@ -58,7 +58,7 @@ const createInventoryDevice = (
   readiness: "ready",
   diagnostics: [],
   providerKind: "dslogic",
-  backendKind: "dsview",
+  backendKind: "libsigrok",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -76,13 +76,13 @@ const createReadyInventorySnapshot = (
   refreshedAt: connectedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["dsview"]
+    backendKinds: ["libsigrok"]
   },
   devices: [createInventoryDevice()],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "ready",
       executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
       version: "1.3.1",
@@ -377,7 +377,7 @@ describe("generic logic analyzer contract", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         artifact: {
           sourceName: "logic-1-live.csv",
           formatHint: "sigrok-csv",
@@ -409,7 +409,7 @@ describe("generic logic analyzer contract", () => {
         ok: true,
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         artifactSummary: {
           sourceName: "logic-1-live.csv",
           formatHint: "sigrok-csv",
@@ -489,7 +489,7 @@ describe("generic logic analyzer contract", () => {
         phase: "await-runner",
         message: "DSView capture timed out.",
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         timeoutMs: 1500,
         stderr: {
           text: "Capture did not complete within 1500ms."
@@ -590,7 +590,7 @@ describe("generic logic analyzer contract", () => {
         return {
           ok: true,
           providerKind: "dslogic",
-          backendKind: "dsview",
+          backendKind: "libsigrok",
           session: {
             sessionId: session.sessionId,
             deviceId: session.deviceId,
@@ -635,7 +635,7 @@ describe("generic logic analyzer contract", () => {
         session,
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         artifactSummary: {
           sourceName: "broken-live.csv",
           formatHint: "sigrok-csv",
@@ -680,7 +680,7 @@ describe("generic logic analyzer contract", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         executablePath: "/Applications/DSView.app/Contents/MacOS/DSView",
-        command: ["dsview", "--capture", "logic-1"],
+        command: ["libsigrok", "--capture", "logic-1"],
         artifact: {
           sourceName: "logic-1-incompatible.csv",
           formatHint: "sigrok-csv",
@@ -712,7 +712,7 @@ describe("generic logic analyzer contract", () => {
         reason: "load-capture-failed",
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "dsview",
+        backendKind: "libsigrok",
         artifactSummary: {
           sourceName: "logic-1-incompatible.csv",
           hasText: true

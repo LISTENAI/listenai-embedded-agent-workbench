@@ -211,15 +211,15 @@ if (result.ok) {
 
 ## DSLogic host support matrix
 
-The packaged live DSLogic path is only live-proven on the DSView-backed Linux host path used in S05. macOS and Windows remain readiness-modeled here: they reuse the same shared readiness vocabulary and diagnostics, but they are not claimed as equally live-proven capture hosts by this package.
+The packaged live DSLogic path is only live-proven on the Linux host path where the native `libsigrok` runtime is present and the probe succeeds. macOS and Windows remain readiness-modeled here: they reuse the same shared readiness vocabulary and diagnostics, but they are not claimed as equally live-proven capture hosts by this package.
 
 | Host platform | Backend expectation | Shared readiness labels | Proof status | What operators should inspect |
 | --- | --- | --- | --- | --- |
-| Linux | `dsview` executable found and probe succeeds | backend `ready`, classic DSLogic device `ready` | `live-proven` | Run the S05 gate, then inspect `backendReadiness[]`, device `readiness`, and any diagnostics returned by the resource manager. |
-| macOS | `dsview` may be absent from the host | backend `missing` when the executable is not found; devices remain non-allocatable | `readiness-modeled` | Check for `backend-missing-executable` in `backendReadiness[].diagnostics` before claiming host support. |
-| Windows | Probe can find hardware while backend confirmation still times out or variants remain unsupported | backend `degraded` on timeout, device `degraded` or `unsupported` depending on variant | `readiness-modeled` | Check `backend-probe-timeout`, `device-unsupported-variant`, or `device-probe-malformed-output` diagnostics instead of assuming the host is capture-ready. |
+| Linux | Native `libsigrok` runtime is present and the probe succeeds | backend `ready`, classic DSLogic device `ready` | `live-proven` | Run the S05 gate, then inspect `backendReadiness[]`, device `readiness`, and any diagnostics returned by the resource manager. |
+| macOS | Native `libsigrok` runtime may be absent from the host | backend `missing` when the runtime cannot be resolved; devices remain non-allocatable | `readiness-modeled` | Check for `backend-missing-runtime` in `backendReadiness[].diagnostics` before claiming host support. |
+| Windows | The probe can find hardware while runtime confirmation still times out or variants remain unsupported | backend `degraded` on timeout, device `degraded` or `unsupported` depending on variant | `readiness-modeled` | Check `backend-probe-timeout`, `device-unsupported-variant`, or `device-probe-malformed-output` diagnostics instead of assuming the host is capture-ready. |
 
-Keep the typed vocabulary from `@listenai/contracts` intact: device readiness is `ready`, `degraded`, or `unsupported`; backend readiness is `ready`, `degraded`, `missing`, or `unsupported`.
+Keep the typed vocabulary from `@listenai/contracts` intact: device readiness is `ready`, `degraded`, or `unsupported`; backend readiness is `ready`, `degraded`, `missing`, or `unsupported`. Hosts should preserve those values in logs, browser surfaces, and operator docs instead of rewriting them into install instructions.
 
 ## Verification
 

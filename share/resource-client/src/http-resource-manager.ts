@@ -16,8 +16,8 @@ import type {
   LiveCaptureFailureKind,
   LiveCaptureRequest,
   LiveCaptureResult,
-  LiveCaptureRunnerOutputSummary,
   LiveCaptureSession,
+  LiveCaptureStreamSummary,
   ReleaseFailure,
   ReleaseRequest,
   ReleaseResult,
@@ -431,16 +431,16 @@ const parseLiveCaptureArtifactSummary = (
   };
 };
 
-const parseLiveCaptureRunnerOutputSummary = (
+const parseLiveCaptureStreamSummary = (
   value: unknown,
   path: string,
-): LiveCaptureRunnerOutputSummary => {
+): LiveCaptureStreamSummary => {
   if (!isObject(value)) {
     throw new Error(`Malformed live capture response at ${path}`);
   }
 
   return {
-    kind: readLiveCaptureString(value.kind, `${path}.kind`) as LiveCaptureRunnerOutputSummary["kind"],
+    kind: readLiveCaptureString(value.kind, `${path}.kind`) as LiveCaptureStreamSummary["kind"],
     byteLength: readLiveCaptureNumber(value.byteLength, `${path}.byteLength`) as number,
     textLength: readLiveCaptureNumber(value.textLength, `${path}.textLength`, true),
     preview: readLiveCaptureString(value.preview, `${path}.preview`, true),
@@ -468,29 +468,24 @@ const parseLiveCaptureFailureDiagnosticsValue = (
       `${path}.backendKind`,
       true,
     ) as LiveCaptureFailureDiagnostics["backendKind"],
-    executablePath: readLiveCaptureString(
-      value.executablePath,
-      `${path}.executablePath`,
+    backendVersion: readLiveCaptureString(
+      value.backendVersion,
+      `${path}.backendVersion`,
       true,
     ),
-    command: Array.isArray(value.command)
-      ? value.command.map((entry, index) =>
-          readLiveCaptureString(entry, `${path}.command[${index}]`) as string,
-        )
-      : (() => {
-          throw new Error(`Malformed live capture response at ${path}.command`);
-        })(),
     timeoutMs: readLiveCaptureNumber(value.timeoutMs, `${path}.timeoutMs`, true),
-    exitCode: readLiveCaptureNumber(value.exitCode, `${path}.exitCode`, true),
-    signal: readLiveCaptureString(value.signal, `${path}.signal`, true),
-    stdout:
-      value.stdout === null
+    nativeCode: readLiveCaptureString(value.nativeCode, `${path}.nativeCode`, true),
+    captureOutput:
+      value.captureOutput === null
         ? null
-        : parseLiveCaptureRunnerOutputSummary(value.stdout, `${path}.stdout`),
-    stderr:
-      value.stderr === null
+        : parseLiveCaptureStreamSummary(value.captureOutput, `${path}.captureOutput`),
+    diagnosticOutput:
+      value.diagnosticOutput === null
         ? null
-        : parseLiveCaptureRunnerOutputSummary(value.stderr, `${path}.stderr`),
+        : parseLiveCaptureStreamSummary(
+            value.diagnosticOutput,
+            `${path}.diagnosticOutput`,
+          ),
     details: Array.isArray(value.details)
       ? value.details.map((entry, index) =>
           readLiveCaptureString(entry, `${path}.details[${index}]`) as string,

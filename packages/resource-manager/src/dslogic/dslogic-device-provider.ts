@@ -133,7 +133,6 @@ const buildInventorySnapshot = (
     platform: snapshot.platform,
     backendKind: DSLOGIC_BACKEND_KIND,
     readiness: mapBackendReadinessState(snapshot),
-    executablePath: snapshot.backend.executablePath,
     version: snapshot.backend.version,
     checkedAt: snapshot.checkedAt,
     diagnostics: backendDiagnostics
@@ -166,13 +165,12 @@ const buildFallbackSnapshot = (
   message: string
 ): InventorySnapshot => {
   const diagnostic: InventoryDiagnostic = {
-    code: "backend-probe-failed",
+    code: "backend-runtime-failed",
     severity: "error",
     target: "backend",
     message,
     platform,
     backendKind: DSLOGIC_BACKEND_KIND,
-    executablePath: null,
     backendVersion: null
   }
 
@@ -188,7 +186,6 @@ const buildFallbackSnapshot = (
         platform,
         backendKind: DSLOGIC_BACKEND_KIND,
         readiness: "degraded",
-        executablePath: null,
         version: null,
         checkedAt,
         diagnostics: [diagnostic]

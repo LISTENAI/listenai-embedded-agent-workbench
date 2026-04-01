@@ -2,7 +2,7 @@
 
 <h4 align="right"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></h4>
 
-This package owns the resource-manager runtime surface for the workspace. It exports the in-memory manager, HTTP app/server helpers, lease management, DSLogic provider integration, and a CLI that starts the HTTP server.
+This package owns the resource-manager runtime surface for the workspace. It exports the in-memory manager, HTTP app/server helpers, lease management, DSLogic provider integration, and a CLI that starts the HTTP server. The shipped dashboard and API now present the native `libsigrok` runtime as the backend truth surface, including `ready`, `degraded`, `missing`, and `unsupported` states.
 
 If you are trying to use the server from this repository, start here instead of inferring behavior from the repo root.
 
@@ -45,6 +45,8 @@ CLI options:
 
 The CLI also reads `RESOURCE_MANAGER_PROVIDER`; if both are present, the CLI flag wins.
 
+Default `dslogic` startup assumes the host already has the native `libsigrok` runtime available. This README intentionally documents what operators should observe from `/inventory`, `/dashboard-snapshot`, and the browser dashboard when that runtime is healthy, degraded, missing, or unsupported; it does not prescribe platform-specific install commands.
+
 Examples:
 
 ```bash
@@ -63,17 +65,18 @@ When the host is `0.0.0.0`, connect from the same machine with `127.0.0.1` and f
 
 ## Operator path
 
-The shipped operator path is one runtime and one verification command:
+The shipped operator path is one runtime, one browser entrypoint, and one verification command:
 
 1. Start the packaged `resource-manager` CLI.
 2. Open `http://127.0.0.1:7600/` from the same machine, or `http://<machine-ip>:7600/` from another device on the same LAN when the host binding is `0.0.0.0`.
-3. Treat `pnpm run verify:m007:s04` as the top-level acceptance gate for this dashboard/runtime seam.
+3. Use the dashboard and `/dashboard-snapshot` as the operator truth surface for device occupancy, owner identity, lease timing, and native `libsigrok` runtime readiness.
+4. Treat `pnpm run verify:m009:s04` as the top-level acceptance gate for this dashboard/operator seam.
 
-That gate reruns the dashboard contract proof (`verify:m007:s01`), reruns the real startup/LAN/SSE proof (`verify:m007:s02`), and then runs the live runtime/browser alignment suites (`integration/resource-manager.e2e.test.ts` and `integration/resource-manager-dashboard.e2e.test.ts`). A passing run means the shipped dashboard entrypoint, API truth, live updates, startup behavior, and degraded-state visibility still agree.
+That gate fails fast on stale dashboard/doc wording, reruns the focused dashboard server suites (`src/server/dashboard-snapshot.test.ts` and `src/server/app.test.ts`), reruns the shipped dashboard browser truth suite (`integration/resource-manager-dashboard.e2e.test.ts`), and rechecks the operator docs for `libsigrok`, missing-runtime, and degraded-state guidance. A passing run means the shipped dashboard entrypoint, API truth, live updates, and operator-facing runtime visibility still agree across healthy, degraded, and missing-runtime states.
 
 ## Dashboard entrypoint and live stream
 
-The browser dashboard ships from the same Hono process as the API surface.
+The browser dashboard ships from the same Hono process as the API surface. Its job is to reflect the authoritative runtime truth model instead of inventing separate browser-only labels.
 
 ```bash
 curl http://127.0.0.1:7600/
@@ -106,7 +109,7 @@ Expected shape:
 
 ### Full inventory snapshot
 
-Returns the authoritative snapshot, including backend readiness and device diagnostics.
+Returns the authoritative snapshot, including native runtime readiness and device diagnostics. Expect backend readiness labels such as `ready`, `degraded`, `missing`, or `unsupported` when probing `libsigrok`.
 
 ```bash
 curl http://127.0.0.1:7600/inventory
@@ -216,7 +219,7 @@ curl -X POST http://127.0.0.1:7600/capture/live \
         "readiness": "ready",
         "diagnostics": [],
         "providerKind": "dslogic",
-        "backendKind": "dsview"
+        "backendKind": "libsigrok"
       },
       "sampling": {
         "sampleRateHz": 1000000,
@@ -279,7 +282,7 @@ server.stop();
 - The default provider is `dslogic`; use `--provider fake` when you only need to verify the HTTP surface.
 - The server scans for expired leases every 10 seconds by default and releases matching devices automatically.
 - `SIGINT` and `SIGTERM` trigger a clean stop in the packaged CLI.
-- `GET /health` is liveness only. For backend readiness, inspect `/inventory`.
+- `GET /health` is liveness only. For `libsigrok` readiness and diagnostics, inspect `/inventory`, `/dashboard-snapshot`, or the browser dashboard.
 
 ## Verification
 
@@ -290,15 +293,13 @@ pnpm --filter @listenai/resource-manager test
 pnpm --filter @listenai/resource-manager typecheck
 ```
 
-Slice verification gates for Milestone M007:
+Slice verification gates for Milestone M009 dashboard/operator migration:
 
 ```bash
-pnpm run verify:m007:s01
-pnpm run verify:m007:s02
-pnpm run verify:m007:s04
+pnpm run verify:m009:s04
 ```
 
-Use `verify:m007:s04` as the authoritative final acceptance command for the shipped operator path. It proves the dashboard contract, real runtime startup, LAN-visible serving, API truth, SSE updates, and degraded-state visibility together.
+Use `verify:m009:s04` as the authoritative final acceptance command for the shipped operator path. It proves the operator wording guard, focused dashboard server truth, shipped dashboard browser truth, and `libsigrok` degraded/missing-runtime visibility together.
 
 Repo-level verification paths that also exercise this package:
 

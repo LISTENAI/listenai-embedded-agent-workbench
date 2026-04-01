@@ -13,7 +13,7 @@ const inventory: InventorySnapshot = {
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic", "fake"],
-    backendKinds: ["dsview", "fake"]
+    backendKinds: ["libsigrok", "fake"]
   },
   devices: [
     {
@@ -33,11 +33,11 @@ const inventory: InventorySnapshot = {
           target: "device",
           message: "Capture path is slower than expected.",
           deviceId: "device-b",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "device-b",
@@ -57,7 +57,7 @@ const inventory: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "device-a",
@@ -77,7 +77,7 @@ const inventory: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "device-c",
@@ -102,11 +102,11 @@ const inventory: InventorySnapshot = {
           target: "device",
           message: "Unsupported hardware variant.",
           deviceId: "device-d",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "device-d",
@@ -118,27 +118,27 @@ const inventory: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "missing",
       executablePath: null,
       version: null,
       checkedAt: refreshedAt,
       diagnostics: [
         {
-          code: "backend-missing-executable",
+          code: "backend-missing-runtime",
           severity: "error",
           target: "backend",
-          message: "DSView is not installed.",
+          message: "libsigrok runtime is not available on macos.",
           platform: "macos",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     },
     {
       platform: "linux",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "degraded",
-      executablePath: "/usr/bin/dsview",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
       version: "1.0.0",
       checkedAt: refreshedAt,
       diagnostics: [
@@ -148,19 +148,19 @@ const inventory: InventorySnapshot = {
           target: "backend",
           message: "Probe returned slowly.",
           platform: "linux",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     }
   ],
   diagnostics: [
     {
-      code: "backend-missing-executable",
+      code: "backend-missing-runtime",
       severity: "error",
       target: "backend",
-      message: "DSView is not installed.",
+      message: "libsigrok runtime is not available on macos.",
       platform: "macos",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     }
   ]
 };
@@ -169,7 +169,7 @@ const mixedProviderCollisionInventory: InventorySnapshot = {
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic", "fake"],
-    backendKinds: ["dsview", "fake"]
+    backendKinds: ["libsigrok", "fake"]
   },
   devices: [
     {
@@ -187,13 +187,13 @@ const mixedProviderCollisionInventory: InventorySnapshot = {
           code: "backend-probe-timeout",
           severity: "warning",
           target: "device",
-          message: "DSLogic path is slow.",
+          message: "libsigrok capture path is slow.",
           deviceId: "collision-device",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "collision-device",
@@ -234,9 +234,9 @@ const mixedProviderCollisionInventory: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "degraded",
-      executablePath: "/Applications/DSView.app",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
       version: "2.0.0",
       checkedAt: refreshedAt,
       diagnostics: [
@@ -244,9 +244,9 @@ const mixedProviderCollisionInventory: InventorySnapshot = {
           code: "backend-probe-timeout",
           severity: "warning",
           target: "backend",
-          message: "DSView readiness probe exceeded the soft timeout.",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
           platform: "macos",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     },
@@ -265,9 +265,9 @@ const mixedProviderCollisionInventory: InventorySnapshot = {
       code: "backend-probe-timeout",
       severity: "warning",
       target: "backend",
-      message: "DSView readiness probe exceeded the soft timeout.",
+      message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
       platform: "macos",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     }
   ]
 };
@@ -323,7 +323,7 @@ describe("createDashboardSnapshot", () => {
 
     expect(snapshot.inventoryScope).toEqual({
       providerKinds: ["dslogic", "fake"],
-      backendKinds: ["dsview", "fake"]
+      backendKinds: ["libsigrok", "fake"]
     });
     expect(snapshot.devices).toHaveLength(2);
     expect(snapshot.devices.map((device) => device.deviceId)).toEqual([
@@ -335,14 +335,14 @@ describe("createDashboardSnapshot", () => {
       "fake:collision-device"
     ]);
     expect(snapshot.devices.map((device) => device.backendKind)).toEqual([
-      "dsview",
+      "libsigrok",
       "fake"
     ]);
     expect(snapshot.devices.map((device) => device.diagnostics)).toEqual([
       [
         expect.objectContaining({
-          backendKind: "dsview",
-          message: "DSLogic path is slow."
+          backendKind: "libsigrok",
+          message: "libsigrok capture path is slow."
         })
       ],
       [
@@ -372,7 +372,7 @@ describe("createDashboardSnapshot", () => {
 
     expect(snapshot.inventoryScope).toEqual({
       providerKinds: ["dslogic", "fake"],
-      backendKinds: ["dsview", "fake"]
+      backendKinds: ["libsigrok", "fake"]
     });
 
     expect(snapshot.devices.map((device) => device.deviceId)).toEqual([

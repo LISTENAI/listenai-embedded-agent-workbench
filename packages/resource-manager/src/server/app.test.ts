@@ -11,7 +11,7 @@ const dslogicSnapshot: InventorySnapshot = {
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["dsview"]
+    backendKinds: ["libsigrok"]
   },
   devices: [
     {
@@ -26,7 +26,7 @@ const dslogicSnapshot: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: {
         family: "dslogic",
         model: "dslogic-plus",
@@ -53,11 +53,11 @@ const dslogicSnapshot: InventorySnapshot = {
           target: "device",
           message: "Variant V421/Pango is not supported.",
           deviceId: "logic-unsupported",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: {
         family: "dslogic",
         model: "dslogic-plus",
@@ -71,31 +71,31 @@ const dslogicSnapshot: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "missing",
       executablePath: null,
       version: null,
       checkedAt: refreshedAt,
       diagnostics: [
         {
-          code: "backend-missing-executable",
+          code: "backend-missing-runtime",
           severity: "error",
           target: "backend",
-          message: "DSView was not found on PATH.",
+          message: "libsigrok runtime is not available on macos.",
           platform: "macos",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     }
   ],
   diagnostics: [
     {
-      code: "backend-missing-executable",
+      code: "backend-missing-runtime",
       severity: "error",
       target: "backend",
-      message: "DSView was not found on PATH.",
+      message: "libsigrok runtime is not available on macos.",
       platform: "macos",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     }
   ]
 };
@@ -104,7 +104,7 @@ const mixedProviderInventory: InventorySnapshot = {
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic", "fake"],
-    backendKinds: ["dsview", "fake"]
+    backendKinds: ["libsigrok", "fake"]
   },
   devices: [
     {
@@ -122,13 +122,13 @@ const mixedProviderInventory: InventorySnapshot = {
           code: "backend-probe-timeout",
           severity: "warning",
           target: "device",
-          message: "DSLogic capture path is slow.",
+          message: "libsigrok capture path is slow.",
           deviceId: "logic-collision",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "collision-001",
@@ -169,9 +169,9 @@ const mixedProviderInventory: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "degraded",
-      executablePath: "/Applications/DSView.app",
+      executablePath: "/opt/homebrew/lib/libsigrok.dylib",
       version: "2.0.0",
       checkedAt: refreshedAt,
       diagnostics: [
@@ -179,9 +179,9 @@ const mixedProviderInventory: InventorySnapshot = {
           code: "backend-probe-timeout",
           severity: "warning",
           target: "backend",
-          message: "DSView readiness probe exceeded the soft timeout.",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
           platform: "macos",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     },
@@ -200,9 +200,9 @@ const mixedProviderInventory: InventorySnapshot = {
       code: "backend-probe-timeout",
       severity: "warning",
       target: "backend",
-      message: "DSView readiness probe exceeded the soft timeout.",
+      message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
       platform: "macos",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     }
   ]
 };
@@ -211,7 +211,7 @@ const dashboardSnapshotInventory: InventorySnapshot = {
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["dsview"]
+    backendKinds: ["libsigrok"]
   },
   devices: [
     {
@@ -226,7 +226,7 @@ const dashboardSnapshotInventory: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: null
     },
     {
@@ -241,7 +241,7 @@ const dashboardSnapshotInventory: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: null
     },
     {
@@ -261,11 +261,11 @@ const dashboardSnapshotInventory: InventorySnapshot = {
           target: "device",
           message: "Capture path is slower than expected.",
           deviceId: "logic-degraded",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: null
     },
     {
@@ -285,42 +285,42 @@ const dashboardSnapshotInventory: InventorySnapshot = {
           target: "device",
           message: "Unsupported hardware variant.",
           deviceId: "logic-unsupported",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ],
       providerKind: "dslogic",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       dslogic: null
     }
   ],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "dsview",
+      backendKind: "libsigrok",
       readiness: "missing",
       executablePath: null,
       version: null,
       checkedAt: refreshedAt,
       diagnostics: [
         {
-          code: "backend-missing-executable",
+          code: "backend-missing-runtime",
           severity: "error",
           target: "backend",
-          message: "DSView was not found on PATH.",
+          message: "libsigrok runtime is not available on macos.",
           platform: "macos",
-          backendKind: "dsview"
+          backendKind: "libsigrok"
         }
       ]
     }
   ],
   diagnostics: [
     {
-      code: "backend-missing-executable",
+      code: "backend-missing-runtime",
       severity: "error",
       target: "backend",
-      message: "DSView was not found on PATH.",
+      message: "libsigrok runtime is not available on macos.",
       platform: "macos",
-      backendKind: "dsview"
+      backendKind: "libsigrok"
     }
   ]
 };
@@ -429,12 +429,12 @@ describe("Hono app routes", () => {
     expect(body).toContain('document.querySelector("#device-cards")');
     expect(body).toContain("Supported devices");
     expect(body).toContain("Unavailable / abnormal");
-    expect(body).toContain("Backend readiness");
+    expect(body).toContain("Runtime readiness");
     expect(body).toContain("No per-device diagnostics reported.");
     expect(body).toContain("Owner identity");
     expect(body).toContain("Lease timing");
-    expect(body).toContain("A fake provider/backend is serving this snapshot");
-    expect(body).toContain("Backend readiness has not reported any probe results yet.");
+    expect(body).toContain("A fake provider or backend is serving this snapshot");
+    expect(body).toContain("libsigrok runtime readiness has not reported any probe results yet.");
   });
 
   it("GET /favicon.ico returns 204 so the dashboard loads without failed requests", async () => {
@@ -676,8 +676,8 @@ describe("Hono app routes", () => {
       }))
     ).toEqual([
       {
-        backendKind: "dsview",
-        diagnosticBackendKinds: ["dsview"]
+        backendKind: "libsigrok",
+        diagnosticBackendKinds: ["libsigrok"]
       },
       {
         backendKind: "fake",
@@ -934,7 +934,7 @@ describe("Hono app routes", () => {
       refreshedAt,
       inventoryScope: {
         providerKinds: ["dslogic"],
-        backendKinds: ["dsview"]
+        backendKinds: ["libsigrok"]
       },
       devices: [],
       backendReadiness: dslogicSnapshot.backendReadiness,

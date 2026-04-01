@@ -1,8 +1,3 @@
-import { access } from "node:fs/promises"
-import { delimiter, join } from "node:path"
-import process from "node:process"
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import type {
   DeviceReadinessState,
   DslogicDeviceIdentity,
@@ -10,29 +5,22 @@ import type {
   InventoryDiagnosticCode,
   InventoryPlatform
 } from "@listenai/contracts"
-
-const execFileAsync = promisify(execFile)
+import {
+  createDslogicNativeRuntime,
+  resolveInventoryPlatform,
+  type CreateDslogicNativeRuntimeOptions,
+  type DslogicNativeRuntime,
+  type DslogicNativeRuntimeDiagnostic,
+  type DslogicNativeRuntimeSnapshot,
+  type DslogicNativeRuntimeState
+} from "./native-runtime.js"
 
 export const DSLOGIC_PROVIDER_KIND = "dslogic" as const
-export const DSLOGIC_BACKEND_KIND = "dsview" as const
-export const DSLOGIC_BACKEND_EXECUTABLE = "dsview"
-export const DSLOGIC_SUPPORTED_HOST_PLATFORMS = ["linux", "macos", "windows"] as const
+export const DSLOGIC_BACKEND_KIND = "libsigrok" as const
 
-export type DslogicProbeBackendState =
-  | "ready"
-  | "missing"
-  | "timeout"
-  | "failed"
-  | "malformed"
-  | "unsupported-os"
+export type DslogicProbeBackendState = DslogicNativeRuntimeState
 
-export interface DslogicProbeDiagnostic {
-  code: InventoryDiagnosticCode
-  message: string
-  deviceId?: string
-  executablePath?: string | null
-  backendVersion?: string | null
-}
+export interface DslogicProbeDiagnostic extends DslogicNativeRuntimeDiagnostic {}
 
 export interface DslogicProbeDeviceCandidate {
   deviceId: string
@@ -49,9 +37,10 @@ export interface DslogicProbeDeviceCandidate {
 export interface DslogicBackendProbeSnapshot {
   platform: InventoryPlatform
   checkedAt: string
+  host: DslogicNativeRuntimeSnapshot["host"]
   backend: {
     state: DslogicProbeBackendState
-    executablePath: string | null
+    libraryPath: string | null
     version: string | null
   }
   devices: readonly DslogicProbeDeviceCandidate[]
@@ -63,16 +52,11 @@ export interface DslogicBackendProbe {
 }
 
 export interface CreateDslogicBackendProbeOptions {
-  now?: () => string
-  getHostPlatform?: () => NodeJS.Platform
-  locateExecutable?: (command: string) => Promise<string | null>
-  runCommand?: (
-    command: string,
-    args: readonly string[],
-    options: { timeoutMs: number }
-  ) => Promise<{ stdout: string; stderr: string }>
-  listUsbDevices?: () => Promise<readonly DslogicProbeDeviceCandidate[]>
-  timeoutMs?: number
+  nativeRuntime?: DslogicNativeRuntime
+  now?: CreateDslogicNativeRuntimeOptions["now"]
+  getHostPlatform?: CreateDslogicNativeRuntimeOptions["getHostOs"]
+  getHostArch?: CreateDslogicNativeRuntimeOptions["getHostArch"]
+  probeRuntime?: CreateDslogicNativeRuntimeOptions["probeRuntime"]
 }
 
 export interface ClassifiedDslogicCandidate {
@@ -81,9 +65,6 @@ export interface ClassifiedDslogicCandidate {
   diagnostics: readonly InventoryDiagnostic[]
 }
 
-const DEFAULT_TIMEOUT_MS = 1500
-const DEFAULT_USB_ENUMERATION_TIMEOUT_MS = 5000
-
 const normalizeUsbIdentifier = (value: string | null | undefined): string | null => {
   if (!value) {
     return null
@@ -91,35 +72,6 @@ const normalizeUsbIdentifier = (value: string | null | undefined): string | null
 
   const normalized = value.trim().toLowerCase()
   return normalized.length === 0 ? null : normalized
-}
-
-export const resolveInventoryPlatform = (
-  platform: NodeJS.Platform | string
-): InventoryPlatform => {
-  switch (platform) {
-    case "darwin":
-    case "macos":
-      return "macos"
-    case "win32":
-    case "windows":
-      return "windows"
-    default:
-      return "linux"
-  }
-}
-
-const parseVersionFromOutput = (output: string): string | null => {
-  const normalized = output.trim()
-  if (normalized.length === 0) {
-    return null
-  }
-
-  const match = normalized.match(/\d+(?:\.\d+)+(?:[-+][^\s]+)?/)
-  if (match) {
-    return match[0]
-  }
-
-  return null
 }
 
 const readRecordString = (value: unknown): string | null =>
@@ -234,38 +186,17 @@ export const parseMacosUsbDevices = (
   return devices
 }
 
-const listUsbDevicesForHost = async (
-  getHostPlatform: () => NodeJS.Platform,
-  runCommand: NonNullable<CreateDslogicBackendProbeOptions["runCommand"]>,
-  now: () => string
-): Promise<readonly DslogicProbeDeviceCandidate[]> => {
-  switch (getHostPlatform()) {
-    case "darwin": {
-      const { stdout } = await runCommand(
-        "system_profiler",
-        ["SPUSBDataType", "-json"],
-        { timeoutMs: DEFAULT_USB_ENUMERATION_TIMEOUT_MS }
-      )
-
-      return parseMacosUsbDevices(stdout, now())
-    }
-    default:
-      return []
-  }
-}
-
 const createBackendDiagnostic = (
   snapshot: DslogicBackendProbeSnapshot,
   code: InventoryDiagnosticCode,
   message: string
 ): InventoryDiagnostic => ({
   code,
-  severity: code === "backend-probe-timeout" ? "warning" : "error",
+  severity: code === "backend-runtime-timeout" ? "warning" : "error",
   target: "backend",
   message,
   platform: snapshot.platform,
   backendKind: DSLOGIC_BACKEND_KIND,
-  executablePath: snapshot.backend.executablePath,
   backendVersion: snapshot.backend.version
 })
 
@@ -285,32 +216,32 @@ export const mapBackendProbeDiagnostics = (
       return [
         createBackendDiagnostic(
           snapshot,
-          "backend-missing-executable",
-          `DSView executable ${DSLOGIC_BACKEND_EXECUTABLE} was not found on ${snapshot.platform}.`
+          "backend-missing-runtime",
+          `libsigrok runtime is not available on ${snapshot.platform}.`
         )
       ]
     case "timeout":
       return [
         createBackendDiagnostic(
           snapshot,
-          "backend-probe-timeout",
-          `DSView probe timed out before readiness was confirmed on ${snapshot.platform}.`
+          "backend-runtime-timeout",
+          `libsigrok runtime probe timed out before readiness was confirmed on ${snapshot.platform}.`
         )
       ]
     case "failed":
       return [
         createBackendDiagnostic(
           snapshot,
-          "backend-probe-failed",
-          `DSView probe failed on ${snapshot.platform}.`
+          "backend-runtime-failed",
+          `libsigrok runtime probe failed on ${snapshot.platform}.`
         )
       ]
     case "malformed":
       return [
         createBackendDiagnostic(
           snapshot,
-          "backend-probe-malformed-output",
-          `DSView probe returned malformed output on ${snapshot.platform}.`
+          "backend-runtime-malformed-response",
+          `libsigrok runtime probe returned malformed output on ${snapshot.platform}.`
         )
       ]
     case "unsupported-os":
@@ -318,7 +249,7 @@ export const mapBackendProbeDiagnostics = (
         createBackendDiagnostic(
           snapshot,
           "backend-unsupported-os",
-          `DSView probing is not supported on ${snapshot.platform}.`
+          `libsigrok probing is not supported on ${snapshot.platform}.`
         )
       ]
     default:
@@ -389,7 +320,7 @@ export const classifyDslogicCandidate = (
     readiness: "unsupported",
     diagnostics: [
       {
-        code: "device-probe-malformed-output",
+        code: "device-runtime-malformed-response",
         severity: "warning",
         target: "device",
         message: `Unable to classify DSLogic variant ${unknownVariant}.`,
@@ -400,152 +331,44 @@ export const classifyDslogicCandidate = (
   }
 }
 
-const defaultLocateExecutable = async (command: string): Promise<string | null> => {
-  const pathValue = process.env.PATH ?? ""
-  const pathEntries = pathValue.split(delimiter).filter(Boolean)
-  const pathext = process.platform === "win32"
-    ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
-        .split(";")
-        .filter(Boolean)
-    : [""]
-
-  for (const entry of pathEntries) {
-    for (const extension of pathext) {
-      const candidatePath = process.platform === "win32"
-        ? join(entry, `${command}${extension.toLowerCase()}`)
-        : join(entry, command)
-
-      try {
-        await access(candidatePath)
-        return candidatePath
-      } catch {
-        continue
-      }
-    }
-  }
-
-  return null
-}
-
-const defaultRunCommand: NonNullable<CreateDslogicBackendProbeOptions["runCommand"]> = async (
-  command,
-  args,
-  options
-) => {
-  const result = await execFileAsync(command, [...args], {
-    timeout: options.timeoutMs,
-    windowsHide: true
-  })
-
-  return {
-    stdout: result.stdout,
-    stderr: result.stderr
-  }
-}
-
-const defaultListUsbDevices = (
-  getHostPlatform: () => NodeJS.Platform,
-  runCommand: NonNullable<CreateDslogicBackendProbeOptions["runCommand"]>,
-  now: () => string
-): NonNullable<CreateDslogicBackendProbeOptions["listUsbDevices"]> =>
-  async () => listUsbDevicesForHost(getHostPlatform, runCommand, now)
+const mapNativeRuntimeSnapshot = (
+  snapshot: DslogicNativeRuntimeSnapshot
+): DslogicBackendProbeSnapshot => ({
+  platform: snapshot.host.platform,
+  checkedAt: snapshot.checkedAt,
+  host: { ...snapshot.host },
+  backend: {
+    state: snapshot.runtime.state,
+    libraryPath: snapshot.runtime.libraryPath,
+    version: snapshot.runtime.version
+  },
+  devices: snapshot.devices.map((device) => ({ ...device })),
+  diagnostics: snapshot.diagnostics.map((diagnostic) => ({ ...diagnostic }))
+})
 
 export const createDslogicBackendProbe = (
   options: CreateDslogicBackendProbeOptions = {}
 ): DslogicBackendProbe => {
-  const now = options.now ?? (() => new Date().toISOString())
-  const getHostPlatform = options.getHostPlatform ?? (() => process.platform)
-  const locateExecutable = options.locateExecutable ?? defaultLocateExecutable
-  const runCommand = options.runCommand ?? defaultRunCommand
-  const listUsbDevices = options.listUsbDevices ?? defaultListUsbDevices(getHostPlatform, runCommand, now)
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const nativeRuntime = options.nativeRuntime ?? createDslogicNativeRuntime({
+    now: options.now,
+    getHostOs: options.getHostPlatform,
+    getHostArch: options.getHostArch,
+    probeRuntime: options.probeRuntime
+  })
 
   return {
     async probeInventory(): Promise<DslogicBackendProbeSnapshot> {
-      const checkedAt = now()
-      const platform = resolveInventoryPlatform(getHostPlatform())
-      const devices = await listUsbDevices()
-      const baseSnapshot: DslogicBackendProbeSnapshot = {
-        platform,
-        checkedAt,
-        backend: {
-          state: DSLOGIC_SUPPORTED_HOST_PLATFORMS.includes(platform)
-            ? "missing"
-            : "unsupported-os",
-          executablePath: null,
-          version: null
-        },
-        devices,
-        diagnostics: []
-      }
-
-      if (!DSLOGIC_SUPPORTED_HOST_PLATFORMS.includes(platform)) {
-        return {
-          ...baseSnapshot,
-          backend: {
-            ...baseSnapshot.backend,
-            state: "unsupported-os"
-          }
-        }
-      }
-
-      const executablePath = await locateExecutable(DSLOGIC_BACKEND_EXECUTABLE)
-      if (!executablePath) {
-        return {
-          ...baseSnapshot,
-          backend: {
-            ...baseSnapshot.backend,
-            state: "missing"
-          }
-        }
-      }
-
-      try {
-        const { stdout, stderr } = await runCommand(executablePath, ["--version"], {
-          timeoutMs
-        })
-        const version = parseVersionFromOutput(`${stdout}\n${stderr}`)
-
-        if (!version) {
-          return {
-            ...baseSnapshot,
-            backend: {
-              state: "malformed",
-              executablePath,
-              version: null
-            }
-          }
-        }
-
-        return {
-          ...baseSnapshot,
-          backend: {
-            state: "ready",
-            executablePath,
-            version
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "TimeoutError") {
-          return {
-            ...baseSnapshot,
-            backend: {
-              state: "timeout",
-              executablePath,
-              version: null
-            }
-          }
-        }
-
-        return {
-          ...baseSnapshot,
-          backend: {
-            state: "failed",
-            executablePath,
-            version: null
-          }
-        }
-      }
+      return mapNativeRuntimeSnapshot(await nativeRuntime.probe())
     }
   }
 }
+
+export { createDslogicNativeRuntime, resolveInventoryPlatform }
+export type {
+  CreateDslogicNativeRuntimeOptions,
+  DslogicNativeHostMetadata,
+  DslogicNativeRuntime,
+  DslogicNativeRuntimeDiagnostic,
+  DslogicNativeRuntimeSnapshot,
+  DslogicNativeRuntimeState
+} from "./native-runtime.js"
