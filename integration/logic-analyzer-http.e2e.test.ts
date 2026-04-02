@@ -1140,13 +1140,8 @@ describe("logic-analyzer live HTTP workflow", () => {
       });
 
       const beforeRejectedStart = await getServerState(url);
-      expect(beforeRejectedStart.devices).toEqual([
-        expect.objectContaining({
-          deviceId: "logic-1",
-          allocationState: "free",
-          ownerSkillId: null,
-        }),
-      ]);
+      // `/devices` stays compatibility-filtered even when authoritative inventory carries an unsupported row.
+      expect(beforeRejectedStart.devices).toEqual([]);
       expect(beforeRejectedStart.leases).toEqual([]);
 
       const rejectedStart = await sessionSkill.startSession(createSessionRequest(allocatedAt));
@@ -1185,14 +1180,7 @@ describe("logic-analyzer live HTTP workflow", () => {
       });
 
       const afterRejectedStart = await getServerState(url);
-      expect(afterRejectedStart.devices).toEqual([
-        expect.objectContaining({
-          deviceId: "logic-1",
-          allocationState: beforeRejectedStart.devices[0]?.allocationState,
-          ownerSkillId: beforeRejectedStart.devices[0]?.ownerSkillId,
-          readiness: "unsupported",
-        }),
-      ]);
+      expect(afterRejectedStart.devices).toEqual([]);
       expect(afterRejectedStart.leases).toEqual(beforeRejectedStart.leases);
 
       provider.setInventorySnapshot(readySnapshot);

@@ -89,6 +89,20 @@ export const createPangoDslogicCandidate = (
   variantHint: overrides.variantHint !== undefined ? overrides.variantHint : "v421-pango"
 })
 
+export const createUnknownDslogicCandidate = (
+  overrides: Partial<DslogicProbeDeviceCandidate> = {}
+): DslogicProbeDeviceCandidate => ({
+  deviceId: overrides.deviceId ?? "logic-unknown",
+  label: overrides.label ?? "Unknown DSLogic",
+  lastSeenAt: overrides.lastSeenAt ?? "2026-03-30T00:00:00.000Z",
+  capabilityType: overrides.capabilityType ?? "logic-analyzer",
+  usbVendorId: overrides.usbVendorId !== undefined ? overrides.usbVendorId : "2a0e",
+  usbProductId: overrides.usbProductId !== undefined ? overrides.usbProductId : "9999",
+  model: overrides.model !== undefined ? overrides.model : "dslogic-plus",
+  modelDisplayName: overrides.modelDisplayName ?? "Unknown DSLogic",
+  variantHint: overrides.variantHint !== undefined ? overrides.variantHint : null
+})
+
 export class FakeDslogicBackendProbe implements DslogicBackendProbe {
   #result: FakeDslogicProbeResult
 

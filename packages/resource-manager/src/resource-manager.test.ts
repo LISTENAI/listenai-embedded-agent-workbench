@@ -962,7 +962,7 @@ describe("in-memory resource manager", () => {
     ]);
   });
 
-  it("preserves diagnostics and backend readiness in snapshot methods", async () => {
+  it("preserves DSLogic diagnostics for non-ready rows when allocation overlays refresh the snapshot", async () => {
     const snapshot: InventorySnapshot = {
       refreshedAt: connectedAt,
       inventoryScope: {
@@ -983,14 +983,31 @@ describe("in-memory resource manager", () => {
           diagnostics: [],
           providerKind: "dslogic",
           backendKind: "libsigrok",
-          dslogic: {
-            family: "dslogic",
-            model: "dslogic-plus",
-            modelDisplayName: "DSLogic Plus",
-            variant: "classic",
-            usbVendorId: "2a0e",
-            usbProductId: "0001"
-          }
+          dslogic: null
+        },
+        {
+          deviceId: "logic-degraded",
+          label: "DSLogic Plus Waiting For Backend",
+          capabilityType: "logic-analyzer",
+          connectionState: "connected",
+          allocationState: "free",
+          ownerSkillId: null,
+          lastSeenAt: connectedAt,
+          updatedAt: connectedAt,
+          readiness: "degraded",
+          diagnostics: [
+            {
+              code: "backend-runtime-timeout",
+              severity: "warning",
+              target: "device",
+              message: "Backend probe timed out before capabilities were confirmed.",
+              deviceId: "logic-degraded",
+              backendKind: "libsigrok"
+            }
+          ],
+          providerKind: "dslogic",
+          backendKind: "libsigrok",
+          dslogic: null
         },
         {
           deviceId: "logic-unsupported",
@@ -1014,29 +1031,22 @@ describe("in-memory resource manager", () => {
           ],
           providerKind: "dslogic",
           backendKind: "libsigrok",
-          dslogic: {
-            family: "dslogic",
-            model: "dslogic-plus",
-            modelDisplayName: "DSLogic Plus",
-            variant: "v421-pango",
-            usbVendorId: "2a0e",
-            usbProductId: "0030"
-          }
+          dslogic: null
         }
       ],
       backendReadiness: [
         {
           platform: "macos",
           backendKind: "libsigrok",
-          readiness: "missing",
+          readiness: "degraded",
           version: null,
           checkedAt: connectedAt,
           diagnostics: [
             {
-              code: "backend-missing-runtime",
-              severity: "error",
+              code: "backend-runtime-timeout",
+              severity: "warning",
               target: "backend",
-              message: "libsigrok runtime is not available on macos.",
+              message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
               platform: "macos",
               backendKind: "libsigrok"
             }
@@ -1045,10 +1055,10 @@ describe("in-memory resource manager", () => {
       ],
       diagnostics: [
         {
-          code: "backend-missing-runtime",
-          severity: "error",
+          code: "backend-runtime-timeout",
+          severity: "warning",
           target: "backend",
-          message: "libsigrok runtime is not available on macos.",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
           platform: "macos",
           backendKind: "libsigrok"
         }
@@ -1057,14 +1067,31 @@ describe("in-memory resource manager", () => {
 
     const provider = new FakeDeviceProvider(snapshot);
     const manager = createResourceManager(provider, {
-      now: createClock(connectedAt)
+      now: createClock(connectedAt, disconnectAt)
     });
 
-    await manager.refreshInventory();
+    await manager.refreshInventorySnapshot();
+    await manager.allocateDevice({
+      deviceId: "logic-ready",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocateAt
+    });
 
-    expect(await manager.listDevices()).toEqual(snapshot.devices);
-    expect(await manager.getInventorySnapshot()).toEqual(snapshot);
-    expect(await manager.refreshInventorySnapshot()).toEqual(snapshot);
+    const refreshedSnapshot = await manager.refreshInventorySnapshot();
+    const readyDevice = refreshedSnapshot.devices.find((device) => device.deviceId === "logic-ready");
+    const degradedDevice = refreshedSnapshot.devices.find((device) => device.deviceId === "logic-degraded");
+    const unsupportedDevice = refreshedSnapshot.devices.find((device) => device.deviceId === "logic-unsupported");
+
+    expect(readyDevice).toMatchObject({
+      allocationState: "allocated",
+      ownerSkillId: "skill-alpha",
+      updatedAt: disconnectAt,
+      diagnostics: []
+    });
+    expect(degradedDevice).toEqual(snapshot.devices[1]);
+    expect(unsupportedDevice).toEqual(snapshot.devices[2]);
+    expect(refreshedSnapshot.backendReadiness).toEqual(snapshot.backendReadiness);
+    expect(refreshedSnapshot.diagnostics).toEqual(snapshot.diagnostics);
   });
 });
 

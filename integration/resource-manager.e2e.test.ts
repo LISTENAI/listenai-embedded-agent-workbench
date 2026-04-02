@@ -295,12 +295,16 @@ function snapshotWithObservedManagerTimestamps(
   expected: InventorySnapshot,
   observed: InventorySnapshot,
 ): InventorySnapshot {
+  const updatedAtById = new Map(
+    observed.devices.map((device) => [device.deviceId, device.updatedAt]),
+  );
+
   return {
     ...expected,
     refreshedAt: observed.refreshedAt,
     devices: expected.devices.map((device) => ({
       ...device,
-      updatedAt: observed.refreshedAt,
+      updatedAt: updatedAtById.get(device.deviceId) ?? device.updatedAt,
     })),
   };
 }
@@ -323,6 +327,7 @@ function compatibilityDevicesWithObservedTimestamps(
   );
 
   return expected.devices
+    .filter((device) => device.connectionState === "connected" && device.readiness === "ready")
     .map((device) => ({
       ...device,
       updatedAt: updatedAtById.get(device.deviceId) ?? device.updatedAt,

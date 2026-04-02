@@ -65,14 +65,14 @@ When the host is `0.0.0.0`, connect from the same machine with `127.0.0.1` and f
 
 ## Operator path
 
-The shipped operator path is one runtime, one browser entrypoint, and one verification command:
+The shipped operator path is one runtime, one browser entrypoint, and one acceptance seam:
 
 1. Start the packaged `resource-manager` CLI.
 2. Open `http://127.0.0.1:7600/` from the same machine, or `http://<machine-ip>:7600/` from another device on the same LAN when the host binding is `0.0.0.0`.
-3. Use the dashboard and `/dashboard-snapshot` as the operator truth surface for device occupancy, owner identity, lease timing, and native `libsigrok` runtime readiness.
-4. Treat `pnpm run verify:m009:s04` as the top-level acceptance gate for this dashboard/operator seam.
+3. Use the dashboard and `/dashboard-snapshot` as the operator truth surface for device occupancy, owner identity, lease timing, and native runtime readiness, while keeping the M010 DSLogic support claim explicit: macOS via `sigrok-cli` is the only live-proven host path; Linux and Windows remain readiness-modeled future paths.
+4. Treat `bash scripts/verify-m010-s05.sh` or `pnpm run verify:m010:s05` as the top-level acceptance seam for this operator story.
 
-That gate fails fast on stale dashboard/doc wording, reruns the focused dashboard server suites (`src/server/dashboard-snapshot.test.ts` and `src/server/app.test.ts`), reruns the shipped dashboard browser truth suite (`integration/resource-manager-dashboard.e2e.test.ts`), and rechecks the operator docs for `libsigrok`, missing-runtime, and degraded-state guidance. A passing run means the shipped dashboard entrypoint, API truth, live updates, and operator-facing runtime visibility still agree across healthy, degraded, and missing-runtime states.
+That seam fails fast on stale dashboard/doc wording, reruns the focused dashboard and package proof surfaces, and rechecks the operator docs for the current macOS `sigrok-cli` live-proof wording plus the typed `ready`, `degraded`, `missing`, and `unsupported` labels and named diagnostics such as `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`. A passing run means the shipped dashboard entrypoint, API truth, live updates, and operator-facing runtime visibility still agree with the M010 support contract.
 
 ## Dashboard entrypoint and live stream
 
@@ -293,13 +293,14 @@ pnpm --filter @listenai/resource-manager test
 pnpm --filter @listenai/resource-manager typecheck
 ```
 
-Slice verification gates for Milestone M009 dashboard/operator migration:
+Slice verification seam for the M010 cross-platform support story:
 
 ```bash
-pnpm run verify:m009:s04
+bash scripts/verify-m010-s05.sh
+pnpm run verify:m010:s05
 ```
 
-Use `verify:m009:s04` as the authoritative final acceptance command for the shipped operator path. It proves the operator wording guard, focused dashboard server truth, shipped dashboard browser truth, and `libsigrok` degraded/missing-runtime visibility together.
+Use the M010 S05 seam as the authoritative acceptance command for the shipped operator path. It proves stale-wording protection, focused dashboard/package truth, and the explicit support contract that keeps macOS `sigrok-cli` live-proven while Linux and Windows remain readiness-modeled with named diagnostics.
 
 Repo-level verification paths that also exercise this package:
 

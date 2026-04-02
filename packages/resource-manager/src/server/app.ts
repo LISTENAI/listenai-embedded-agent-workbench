@@ -44,6 +44,20 @@ function getLeaseExpiryOrThrow(leaseManager: LeaseManager, leaseId: string): str
   return expiresAt;
 }
 
+const isCompatibilityVisibleDevice = (
+  device: Awaited<ReturnType<SnapshotResourceManager["getInventorySnapshot"]>>["devices"][number]
+): boolean => device.connectionState === "connected" && device.readiness === "ready";
+
+async function getCompatibilityVisibleDevices(
+  manager: SnapshotResourceManager,
+  refresh = false
+) {
+  const snapshot = refresh
+    ? await manager.refreshInventorySnapshot()
+    : await manager.getInventorySnapshot();
+  return snapshot.devices.filter(isCompatibilityVisibleDevice);
+}
+
 async function getDashboardSnapshot(
   manager: SnapshotResourceManager,
   leaseManager: LeaseManager
@@ -277,11 +291,11 @@ export function createApp(
   });
 
   app.get("/devices", async (c) => {
-    return c.json(await manager.listDevices());
+    return c.json(await getCompatibilityVisibleDevices(manager));
   });
 
   app.post("/refresh", async (c) => {
-    const devices = await manager.refreshInventory();
+    const devices = await getCompatibilityVisibleDevices(manager, true);
     await dashboardLiveUpdates.publish("inventory-refreshed");
     return c.json(devices);
   });

@@ -604,8 +604,8 @@ describe("Hono app routes", () => {
     expect(body).toEqual([]);
   });
 
-  it("GET /inventory returns backend readiness and device diagnostics intact", async () => {
-    const provider = new FakeDeviceProvider(dslogicSnapshot);
+  it("GET /inventory returns full authoritative DSLogic rows with backend and device diagnostics intact", async () => {
+    const provider = new FakeDeviceProvider(dashboardSnapshotInventory);
     const manager = createResourceManager(provider, { now: () => refreshedAt });
     await manager.refreshInventorySnapshot();
     const leaseManager = new LeaseManager();
@@ -614,11 +614,11 @@ describe("Hono app routes", () => {
     const res = await app.request("/inventory");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual(dslogicSnapshot);
+    expect(body).toEqual(dashboardSnapshotInventory);
   });
 
-  it("POST /inventory/refresh returns the full snapshot without collapsing metadata", async () => {
-    const provider = new FakeDeviceProvider(dslogicSnapshot);
+  it("POST /inventory/refresh returns the authoritative snapshot without collapsing DSLogic metadata", async () => {
+    const provider = new FakeDeviceProvider(dashboardSnapshotInventory);
     const manager = createResourceManager(provider, { now: () => refreshedAt });
     const leaseManager = new LeaseManager();
     const app = createApp(manager, leaseManager);
@@ -626,21 +626,28 @@ describe("Hono app routes", () => {
     const res = await app.request("/inventory/refresh", { method: "POST" });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual(dslogicSnapshot);
+    expect(body).toEqual(dashboardSnapshotInventory);
   });
 
-  it("POST /refresh keeps compatibility fields on device rows derived from the snapshot", async () => {
-    const provider = new FakeDeviceProvider(dslogicSnapshot);
+  it("GET /devices and POST /refresh only expose compatibility-visible DSLogic rows", async () => {
+    const provider = new FakeDeviceProvider(dashboardSnapshotInventory);
     const manager = createResourceManager(provider, { now: () => refreshedAt });
+    await manager.refreshInventorySnapshot();
     const leaseManager = new LeaseManager();
     const app = createApp(manager, leaseManager);
 
-    const res = await app.request("/refresh", { method: "POST" });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual(dslogicSnapshot.devices);
-  });
+    const expectedDevices = dashboardSnapshotInventory.devices.filter(
+      (device) => device.connectionState === "connected" && device.readiness === "ready"
+    );
 
+    const devicesRes = await app.request("/devices");
+    expect(devicesRes.status).toBe(200);
+    expect(await devicesRes.json()).toEqual(expectedDevices);
+
+    const refreshRes = await app.request("/refresh", { method: "POST" });
+    expect(refreshRes.status).toBe(200);
+    expect(await refreshRes.json()).toEqual(expectedDevices);
+  });
 
   it("GET /inventory and /dashboard-snapshot preserve mixed-provider identity and backend diagnostics", async () => {
     const provider = new FakeDeviceProvider(mixedProviderInventory);
@@ -731,6 +738,31 @@ describe("Hono app routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.generatedAt).toBe(refreshedAt);
+      expect(body.backendReadiness).toEqual(dashboardSnapshotInventory.backendReadiness);
+      expect(body.diagnostics).toEqual(dashboardSnapshotInventory.diagnostics);
+      expect(
+        body.devices.map((device: { deviceId: string; diagnostics: unknown[] }) => ({
+          deviceId: device.deviceId,
+          diagnostics: device.diagnostics
+        }))
+      ).toEqual([
+        {
+          deviceId: "logic-degraded",
+          diagnostics: dashboardSnapshotInventory.devices[2]?.diagnostics
+        },
+        {
+          deviceId: "logic-free",
+          diagnostics: []
+        },
+        {
+          deviceId: "logic-ready",
+          diagnostics: []
+        },
+        {
+          deviceId: "logic-unsupported",
+          diagnostics: dashboardSnapshotInventory.devices[3]?.diagnostics
+        }
+      ]);
       expect(body.overview).toEqual({
         totalDevices: 4,
         connectedDevices: 4,

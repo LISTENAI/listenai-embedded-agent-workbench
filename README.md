@@ -132,19 +132,19 @@ Use the package-owned docs for request shapes, cleanup expectations, installer c
 
 ## Verification for users
 
-If you want to confirm the packaged user path still works from the repository root, run:
+If you want to confirm the packaged user path still matches the M010 support story from the repository root, run:
 
 ```bash
-pnpm run verify:m009:s04
-pnpm run verify:m009:s05
-pnpm run verify:m009
+bash scripts/verify-m010-s05.sh
+pnpm run verify:m010:s05
 ```
 
-What these prove:
+What this proves:
 
-- `verify:m009:s04` - dashboard, browser, and operator-facing docs stay aligned with `libsigrok` runtime truth
-- `verify:m009:s05` - the assembled resource-manager and logic-analyzer HTTP path works end to end
-- `verify:m009` - the full M009 verification chain passes from the authoritative repo root
+- `bash scripts/verify-m010-s05.sh` - the layered support-story gate rejects stale M006/M009 wording and rechecks the M010 acceptance seam
+- `pnpm run verify:m010:s05` - the repo-facing alias for that same acceptance seam stays wired from the authoritative repo root
+
+The M010 support contract is explicit: macOS via `sigrok-cli` is `live-proven`, while Linux and Windows remain `readiness-modeled` future paths whose truthful diagnostics still include `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`.
 
 ## If you are contributing instead
 

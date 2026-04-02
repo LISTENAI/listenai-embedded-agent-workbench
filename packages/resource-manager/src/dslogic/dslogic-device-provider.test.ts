@@ -4,7 +4,8 @@ import {
   FakeDslogicBackendProbe,
   createClassicDslogicCandidate,
   createDslogicProbeSnapshot,
-  createPangoDslogicCandidate
+  createPangoDslogicCandidate,
+  createUnknownDslogicCandidate
 } from "../testing/fake-dslogic-probe.js"
 
 const refreshedAt = "2026-03-30T10:00:00.000Z"
@@ -107,7 +108,7 @@ describe("DslogicDeviceProvider", () => {
             message: "libsigrok runtime is not available on macos.",
             platform: "macos",
             backendKind: "libsigrok",
-                backendVersion: null
+            backendVersion: null
           }
         ]
       }
@@ -228,7 +229,7 @@ describe("DslogicDeviceProvider", () => {
     await expect(windowsProvider.listConnectedDevices()).resolves.toEqual([])
   })
 
-  it("marks V421/Pango as a first-class unsupported variant", async () => {
+  it("marks V421/Pango as a first-class unsupported variant without backend leakage when ready", async () => {
     const provider = new DslogicDeviceProvider({
       probe: new FakeDslogicBackendProbe(
         createDslogicProbeSnapshot({
@@ -297,7 +298,7 @@ describe("DslogicDeviceProvider", () => {
           message: "libsigrok runtime probe timed out before readiness was confirmed on linux.",
           platform: "linux",
           backendKind: "libsigrok",
-              backendVersion: null
+          backendVersion: null
         }
       ]
     })
@@ -315,7 +316,140 @@ describe("DslogicDeviceProvider", () => {
     expect(await provider.listConnectedDevices()).toEqual([])
   })
 
-  it("treats malformed probe output and unknown variants as unsupported or degraded diagnostics", async () => {
+  it("preserves backend-failed diagnostics on discovered classic rows", async () => {
+    const provider = new DslogicDeviceProvider({
+      probe: new FakeDslogicBackendProbe(
+        createDslogicProbeSnapshot({
+          checkedAt: refreshedAt,
+          platform: "macos",
+          backendState: "failed",
+          version: null,
+          devices: [
+            createClassicDslogicCandidate({
+              deviceId: "logic-failed",
+              label: "DSLogic Plus Failed Backend",
+              lastSeenAt: refreshedAt
+            })
+          ]
+        })
+      )
+    })
+
+    const snapshot = await provider.listInventorySnapshot()
+
+    expect(snapshot.backendReadiness).toEqual([
+      {
+        platform: "macos",
+        backendKind: "libsigrok",
+        readiness: "degraded",
+        version: null,
+        checkedAt: refreshedAt,
+        diagnostics: [
+          {
+            code: "backend-runtime-failed",
+            severity: "error",
+            target: "backend",
+            message: "libsigrok runtime probe failed on macos.",
+            platform: "macos",
+            backendKind: "libsigrok",
+            backendVersion: null
+          }
+        ]
+      }
+    ])
+    expect(snapshot.devices).toEqual([
+      {
+        deviceId: "logic-failed",
+        label: "DSLogic Plus Failed Backend",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: refreshedAt,
+        updatedAt: refreshedAt,
+        readiness: "degraded",
+        diagnostics: [
+          {
+            code: "backend-runtime-failed",
+            severity: "error",
+            target: "backend",
+            message: "libsigrok runtime probe failed on macos.",
+            platform: "macos",
+            backendKind: "libsigrok",
+            backendVersion: null,
+            deviceId: "logic-failed"
+          }
+        ],
+        providerKind: "dslogic",
+        backendKind: "libsigrok",
+        dslogic: {
+          family: "dslogic",
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic Plus",
+          variant: "classic",
+          usbVendorId: "2a0e",
+          usbProductId: "0001"
+        }
+      }
+    ])
+    expect(await provider.listConnectedDevices()).toEqual([])
+  })
+
+  it("keeps malformed backend diagnostics visible when no candidates survive discovery", async () => {
+    const provider = new DslogicDeviceProvider({
+      probe: new FakeDslogicBackendProbe(
+        createDslogicProbeSnapshot({
+          checkedAt: refreshedAt,
+          platform: "macos",
+          backendState: "malformed",
+          version: null,
+          devices: []
+        })
+      )
+    })
+
+    await expect(provider.listInventorySnapshot()).resolves.toEqual({
+      refreshedAt,
+      inventoryScope: {
+        providerKinds: ["dslogic"],
+        backendKinds: ["libsigrok"]
+      },
+      devices: [],
+      backendReadiness: [
+        {
+          platform: "macos",
+          backendKind: "libsigrok",
+          readiness: "degraded",
+          version: null,
+          checkedAt: refreshedAt,
+          diagnostics: [
+            {
+              code: "backend-runtime-malformed-response",
+              severity: "error",
+              target: "backend",
+              message: "libsigrok runtime probe returned malformed output on macos.",
+              platform: "macos",
+              backendKind: "libsigrok",
+              backendVersion: null
+            }
+          ]
+        }
+      ],
+      diagnostics: [
+        {
+          code: "backend-runtime-malformed-response",
+          severity: "error",
+          target: "backend",
+          message: "libsigrok runtime probe returned malformed output on macos.",
+          platform: "macos",
+          backendKind: "libsigrok",
+          backendVersion: null
+        }
+      ]
+    })
+  })
+
+  it("treats malformed probe output and missing variant hints as unsupported diagnostics", async () => {
     const provider = new DslogicDeviceProvider({
       probe: new FakeDslogicBackendProbe(
         createDslogicProbeSnapshot({
@@ -324,11 +458,21 @@ describe("DslogicDeviceProvider", () => {
           backendState: "malformed",
           version: null,
           devices: [
-            createClassicDslogicCandidate({
+            createUnknownDslogicCandidate({
               deviceId: "logic-unknown",
+              lastSeenAt: refreshedAt,
               usbProductId: "9999",
               variantHint: null,
               modelDisplayName: "Unknown DSLogic"
+            }),
+            createUnknownDslogicCandidate({
+              deviceId: "logic-missing-usb",
+              label: "Mystery DSLogic",
+              lastSeenAt: refreshedAt,
+              usbVendorId: null,
+              usbProductId: null,
+              variantHint: null,
+              modelDisplayName: "Mystery DSLogic"
             })
           ]
         })
@@ -336,36 +480,151 @@ describe("DslogicDeviceProvider", () => {
     })
 
     const snapshot = await provider.listInventorySnapshot()
-    const device = snapshot.devices[0]
 
     expect(snapshot.backendReadiness[0]?.readiness).toBe("degraded")
-    expect(snapshot.backendReadiness[0]?.diagnostics).toEqual([
+    expect(snapshot.devices).toEqual([
       {
-        code: "backend-runtime-malformed-response",
-        severity: "error",
-        target: "backend",
-        message: "libsigrok runtime probe returned malformed output on macos.",
-        platform: "macos",
+        deviceId: "logic-unknown",
+        label: "Unknown DSLogic",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: refreshedAt,
+        updatedAt: refreshedAt,
+        readiness: "unsupported",
+        diagnostics: [
+          {
+            code: "device-runtime-malformed-response",
+            severity: "warning",
+            target: "device",
+            message: "Unable to classify DSLogic variant 2a0e:9999.",
+            deviceId: "logic-unknown",
+            backendKind: "libsigrok"
+          },
+          {
+            code: "backend-runtime-malformed-response",
+            severity: "error",
+            target: "backend",
+            message: "libsigrok runtime probe returned malformed output on macos.",
+            platform: "macos",
+            backendKind: "libsigrok",
+            backendVersion: null,
+            deviceId: "logic-unknown"
+          }
+        ],
+        providerKind: "dslogic",
         backendKind: "libsigrok",
-          backendVersion: null
+        dslogic: {
+          family: "dslogic",
+          model: "dslogic-plus",
+          modelDisplayName: "Unknown DSLogic",
+          variant: "2a0e:9999",
+          usbVendorId: "2a0e",
+          usbProductId: "9999"
+        }
+      },
+      {
+        deviceId: "logic-missing-usb",
+        label: "Mystery DSLogic",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: refreshedAt,
+        updatedAt: refreshedAt,
+        readiness: "unsupported",
+        diagnostics: [
+          {
+            code: "device-runtime-malformed-response",
+            severity: "warning",
+            target: "device",
+            message: "Unable to classify DSLogic variant missing-usb-id.",
+            deviceId: "logic-missing-usb",
+            backendKind: "libsigrok"
+          },
+          {
+            code: "backend-runtime-malformed-response",
+            severity: "error",
+            target: "backend",
+            message: "libsigrok runtime probe returned malformed output on macos.",
+            platform: "macos",
+            backendKind: "libsigrok",
+            backendVersion: null,
+            deviceId: "logic-missing-usb"
+          }
+        ],
+        providerKind: "dslogic",
+        backendKind: "libsigrok",
+        dslogic: {
+          family: "dslogic",
+          model: "dslogic-plus",
+          modelDisplayName: "Mystery DSLogic",
+          variant: "missing-usb-id",
+          usbVendorId: null,
+          usbProductId: null
+        }
       }
     ])
-    expect(device).toMatchObject({
-      deviceId: "logic-unknown",
-      readiness: "unsupported",
-      dslogic: {
-        variant: "2a0e:9999"
-      }
-    })
-    expect(device?.diagnostics).toContainEqual({
-      code: "device-runtime-malformed-response",
-      severity: "warning",
-      target: "device",
-      message: "Unable to classify DSLogic variant 2a0e:9999.",
-      deviceId: "logic-unknown",
-      backendKind: "libsigrok"
-    })
     expect(await provider.listConnectedDevices()).toEqual([])
+  })
+
+  it("keeps compatibility-visible devices limited to connected ready rows in mixed snapshots", async () => {
+    const provider = new DslogicDeviceProvider({
+      probe: new FakeDslogicBackendProbe(
+        createDslogicProbeSnapshot({
+          checkedAt: refreshedAt,
+          platform: "linux",
+          devices: [
+            createClassicDslogicCandidate({
+              deviceId: "logic-ready-a",
+              label: "DSLogic Plus Ready A",
+              lastSeenAt: refreshedAt
+            }),
+            createPangoDslogicCandidate({
+              deviceId: "logic-unsupported",
+              lastSeenAt: refreshedAt
+            }),
+            createUnknownDslogicCandidate({
+              deviceId: "logic-unknown-b",
+              label: "Unknown DSLogic B",
+              lastSeenAt: refreshedAt,
+              usbProductId: "9999",
+              variantHint: null,
+              modelDisplayName: "Unknown DSLogic B"
+            }),
+            createClassicDslogicCandidate({
+              deviceId: "logic-ready-b",
+              label: "DSLogic Plus Ready B",
+              lastSeenAt: refreshedAt
+            })
+          ]
+        })
+      )
+    })
+
+    const snapshot = await provider.listInventorySnapshot()
+
+    expect(snapshot.devices.map((device) => [device.deviceId, device.readiness])).toEqual([
+      ["logic-ready-a", "ready"],
+      ["logic-unsupported", "unsupported"],
+      ["logic-unknown-b", "unsupported"],
+      ["logic-ready-b", "ready"]
+    ])
+    await expect(provider.listConnectedDevices()).resolves.toEqual([
+      {
+        deviceId: "logic-ready-a",
+        label: "DSLogic Plus Ready A",
+        capabilityType: "logic-analyzer",
+        lastSeenAt: refreshedAt
+      },
+      {
+        deviceId: "logic-ready-b",
+        label: "DSLogic Plus Ready B",
+        capabilityType: "logic-analyzer",
+        lastSeenAt: refreshedAt
+      }
+    ])
   })
 
   it("returns a degraded backend snapshot instead of throwing when the probe crashes", async () => {
@@ -397,7 +656,7 @@ describe("DslogicDeviceProvider", () => {
               message: "DSLogic probe threw: spawn EACCES",
               platform: "macos",
               backendKind: "libsigrok",
-                    backendVersion: null
+              backendVersion: null
             }
           ]
         }
@@ -410,7 +669,7 @@ describe("DslogicDeviceProvider", () => {
           message: "DSLogic probe threw: spawn EACCES",
           platform: "macos",
           backendKind: "libsigrok",
-            backendVersion: null
+          backendVersion: null
         }
       ]
     })

@@ -122,14 +122,23 @@ const cloneDiagnostic = (
   diagnostic: InventoryDiagnostic
 ): InventoryDiagnostic => ({ ...diagnostic });
 
-const cloneRecord = (record: DeviceRecord): DeviceRecord => ({
-  ...record,
-  diagnostics: record.diagnostics?.map(cloneDiagnostic),
-  canonicalIdentity: record.canonicalIdentity
-    ? { ...record.canonicalIdentity }
-    : record.canonicalIdentity,
-  dslogic: record.dslogic ? { ...record.dslogic } : record.dslogic
-});
+const cloneRecord = (record: DeviceRecord): DeviceRecord => {
+  const clone: DeviceRecord = {
+    ...record,
+    diagnostics: record.diagnostics?.map(cloneDiagnostic),
+    dslogic: record.dslogic ? { ...record.dslogic } : record.dslogic
+  };
+
+  if (record.canonicalIdentity === undefined) {
+    delete (clone as Partial<DeviceRecord>).canonicalIdentity;
+  } else {
+    clone.canonicalIdentity = record.canonicalIdentity
+      ? { ...record.canonicalIdentity }
+      : record.canonicalIdentity;
+  }
+
+  return clone;
+};
 
 const cloneSnapshot = (snapshot: InventorySnapshot): InventorySnapshot => ({
   ...snapshot,
@@ -209,13 +218,24 @@ const setAllocationState = (
   allocation: AllocationStateSnapshot | undefined,
   updatedAt: string,
   connectionState: DeviceRecord["connectionState"] = record.connectionState
-): DeviceRecord => ({
-  ...cloneRecord(record),
-  connectionState,
-  allocationState: allocation ? "allocated" : "free",
-  ownerSkillId: allocation?.ownerSkillId ?? null,
-  updatedAt
-});
+): DeviceRecord => {
+  const nextRecord: DeviceRecord = {
+    ...cloneRecord(record),
+    connectionState,
+    allocationState: allocation ? "allocated" : "free",
+    ownerSkillId: allocation?.ownerSkillId ?? null
+  };
+
+  if (
+    allocation ||
+    connectionState !== record.connectionState ||
+    record.readiness === "ready"
+  ) {
+    nextRecord.updatedAt = updatedAt;
+  }
+
+  return nextRecord;
+};
 
 const createDisconnectedAllocatedRecord = (
   record: DeviceRecord,

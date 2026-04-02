@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   createDslogicBackendProbe,
+  mapBackendProbeDiagnostics,
   parseMacosUsbDevices,
   type CreateDslogicBackendProbeOptions
 } from "./backend-probe.js"
@@ -74,9 +75,32 @@ describe("backend-probe", () => {
       runtime: {
         state: "ready",
         libraryPath: host.platform === "macos" ? "/opt/homebrew/lib/libsigrok.dylib" : null,
-        version: "0.6.0"
+        version: "0.7.2"
       },
-      devices: parseMacosUsbDevices(macosUsbSnapshot, checkedAt),
+      devices: [
+        {
+          deviceId: "usb:1-4",
+          label: "DSLogic Plus",
+          lastSeenAt: checkedAt,
+          capabilityType: "logic-analyzer",
+          usbVendorId: "2a0e",
+          usbProductId: "0001",
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic Plus",
+          variantHint: null
+        },
+        {
+          deviceId: "pango-002",
+          label: "DSLogic V421/Pango",
+          lastSeenAt: checkedAt,
+          capabilityType: "logic-analyzer",
+          usbVendorId: "2a0e",
+          usbProductId: "0030",
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic V421/Pango",
+          variantHint: "v421-pango"
+        }
+      ],
       diagnostics: []
     })
 
@@ -98,11 +122,11 @@ describe("backend-probe", () => {
       backend: {
         state: "ready",
         libraryPath: "/opt/homebrew/lib/libsigrok.dylib",
-        version: "0.6.0"
+        version: "0.7.2"
       },
       devices: [
         {
-          deviceId: "dsl-classic-001",
+          deviceId: "usb:1-4",
           label: "DSLogic Plus",
           lastSeenAt: checkedAt,
           capabilityType: "logic-analyzer",
@@ -113,7 +137,7 @@ describe("backend-probe", () => {
           variantHint: null
         },
         {
-          deviceId: "0x00200000 / 8",
+          deviceId: "pango-002",
           label: "DSLogic V421/Pango",
           lastSeenAt: checkedAt,
           capabilityType: "logic-analyzer",
@@ -121,11 +145,73 @@ describe("backend-probe", () => {
           usbProductId: "0030",
           model: "dslogic-plus",
           modelDisplayName: "DSLogic V421/Pango",
-          variantHint: null
+          variantHint: "v421-pango"
         }
       ],
       diagnostics: []
     })
+  })
+
+  it("preserves explicit native timeout diagnostics in the backend contract", async () => {
+    const probeRuntime: NonNullable<CreateDslogicBackendProbeOptions["probeRuntime"]> = async () => ({
+      runtime: {
+        state: "timeout",
+        libraryPath: "/opt/homebrew/lib/libsigrok.dylib",
+        version: "0.7.2"
+      },
+      devices: [],
+      diagnostics: [
+        {
+          code: "backend-runtime-timeout",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
+          libraryPath: "/opt/homebrew/lib/libsigrok.dylib",
+          backendVersion: "0.7.2"
+        }
+      ]
+    })
+
+    const probe = createDslogicBackendProbe({
+      now: () => checkedAt,
+      getHostPlatform: () => "darwin",
+      getHostArch: () => "arm64",
+      probeRuntime
+    })
+
+    const snapshot = await probe.probeInventory()
+    expect(snapshot).toEqual({
+      platform: "macos",
+      checkedAt,
+      host: {
+        platform: "macos",
+        os: "darwin",
+        arch: "arm64"
+      },
+      backend: {
+        state: "timeout",
+        libraryPath: "/opt/homebrew/lib/libsigrok.dylib",
+        version: "0.7.2"
+      },
+      devices: [],
+      diagnostics: [
+        {
+          code: "backend-runtime-timeout",
+          message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
+          libraryPath: "/opt/homebrew/lib/libsigrok.dylib",
+          backendVersion: "0.7.2"
+        }
+      ]
+    })
+    expect(mapBackendProbeDiagnostics(snapshot)).toEqual([
+      {
+        code: "backend-runtime-timeout",
+        severity: "warning",
+        target: "backend",
+        message: "libsigrok runtime probe timed out before readiness was confirmed on macos.",
+        platform: "macos",
+        backendKind: "libsigrok",
+        backendVersion: "0.7.2"
+      }
+    ])
   })
 
   it("keeps DSLogic candidates visible when libsigrok is missing", async () => {

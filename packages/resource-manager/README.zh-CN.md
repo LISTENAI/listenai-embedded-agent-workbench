@@ -68,10 +68,10 @@ RESOURCE_MANAGER_PROVIDER=fake pnpm --filter @listenai/resource-manager exec tsx
 
 1. 启动打包后的 `resource-manager` CLI。
 2. 在同一台机器上打开 `http://127.0.0.1:7600/`；如果绑定地址是 `0.0.0.0`，也可以从同一局域网中的其他设备打开 `http://<machine-ip>:7600/`。
-3. 把 dashboard 与 `/dashboard-snapshot` 当作设备占用、owner identity、lease timing，以及原生 `libsigrok` runtime readiness 的权威观察面。
-4. 把 `pnpm run verify:m009:s04` 当作这个 dashboard/operator seam 的顶层验收命令。
+3. 把 dashboard 与 `/dashboard-snapshot` 当作设备占用、owner identity、lease timing，以及 native runtime readiness 的权威观察面，同时保持 M010 的 DSLogic 支持结论明确：只有通过 `sigrok-cli` 的 macOS 路径是 live-proven，Linux 与 Windows 仍然只是 readiness-modeled 的未来路径。
+4. 把 `bash scripts/verify-m010-s05.sh` 或 `pnpm run verify:m010:s05` 当作这个 operator story 的顶层验收 seam。
 
-该 gate 会先快速拦截 dashboard/doc 中残留的陈旧措辞，然后重新执行聚焦的 dashboard server suites（`src/server/dashboard-snapshot.test.ts` 与 `src/server/app.test.ts`）、已发布 dashboard 的 browser truth suite（`integration/resource-manager-dashboard.e2e.test.ts`），并再次检查 operator docs 是否覆盖 `libsigrok`、missing runtime 与 degraded state 指引。命令通过时，表示已发布的 dashboard entrypoint、API truth、live updates，以及面向 operator 的 runtime 可见性在 healthy / degraded / missing runtime 之间仍然保持一致。
+该 seam 会先快速拦截 dashboard/doc 中残留的陈旧措辞，然后重新执行聚焦的 dashboard/package proof surfaces，并再次检查 operator docs 是否保留当前 macOS `sigrok-cli` live-proof 叙述，以及 `ready`、`degraded`、`missing`、`unsupported` 这些 typed labels 和 `backend-missing-runtime`、`backend-runtime-timeout`、`backend-runtime-malformed-response`、`backend-unsupported-os`、`device-unsupported-variant`、`device-runtime-malformed-response` 等命名诊断。命令通过时，表示已发布的 dashboard entrypoint、API truth、live updates，以及面向 operator 的 runtime 可见性仍然与 M010 支持契约保持一致。
 
 ## 健康检查与 inventory 检查
 
@@ -275,7 +275,14 @@ pnpm --filter @listenai/resource-manager test
 pnpm --filter @listenai/resource-manager typecheck
 ```
 
-当前面向 operator 的最终验收命令是 `pnpm run verify:m009:s04`；它会一起证明 operator wording guard、聚焦的 dashboard server truth、已发布 dashboard browser truth，以及 `libsigrok` 的 degraded / missing runtime 可见性。
+用于 M010 跨平台支持叙事的 slice 验收 seam：
+
+```bash
+bash scripts/verify-m010-s05.sh
+pnpm run verify:m010:s05
+```
+
+把 M010 S05 seam 当作已发布 operator 路径的权威验收命令。它会一起证明陈旧措辞保护、聚焦的 dashboard/package truth，以及明确的支持契约：macOS `sigrok-cli` 是 live-proven，而 Linux 与 Windows 仍是带命名诊断的 readiness-modeled 路径。
 
 同时覆盖这个 package 的仓库级验证路径：
 

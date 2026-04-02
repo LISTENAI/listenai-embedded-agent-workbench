@@ -81,9 +81,9 @@ Treat nested payloads as authoritative diagnostics. Do not replace them with a n
 Use the package README's DSLogic support matrix as the operator-facing truth.
 
 Support summary:
-- Linux + `libsigrok`: `live-proven` in S05 when backend readiness is `ready` and the classic DSLogic device is `ready`.
-- macOS + `libsigrok`: `readiness-modeled`; treat `missing` backend readiness and `backend-missing-runtime` as truthful operator diagnostics, not as implied live support.
-- Windows + `libsigrok`: `readiness-modeled`; treat `degraded` backend readiness, `backend-runtime-timeout`, `device-unsupported-variant`, and `device-runtime-malformed-response` as explicit non-ready diagnostics.
+- macOS + `sigrok-cli`: `live-proven` in M010 when backend readiness is `ready`, the classic DSLogic device is `ready`, and the packaged acceptance seam still passes.
+- Linux: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful operator diagnostics instead of implied live support.
+- Windows: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful operator diagnostics instead of implied live support.
 
 Keep the shared contract vocabulary intact:
 - device readiness: <code>ready</code>, <code>degraded</code>, <code>unsupported</code>
@@ -95,7 +95,7 @@ Keep the shared contract vocabulary intact:
 - For Codex installation, use the package-owned CLI <code>listenai-logic-analyzer-install-codex &lt;codex-skills-directory&gt;</code> and target either <code>~/.codex/skills</code> or <code>.codex/skills</code>; the installed skill lives at <code>logic-analyzer/</code> under that directory and contains this package-owned <code>SKILL.md</code> plus <code>README.md</code>.
 - For Claude Code installation, use the package-owned CLI <code>listenai-logic-analyzer-install-claude &lt;claude-skills-directory&gt;</code> and target either <code>~/.claude/skills</code> or <code>.claude/skills</code>; the installed skill lives at <code>logic-analyzer/</code> under that directory and contains this package-owned <code>SKILL.md</code> plus <code>README.md</code>.
 - Keep repo-local callers on the package-owned import path so docs and runtime entrypoints stay canonical.
-- When verifying the packaged live/offline contract and the host support story, prefer <code>bash scripts/verify-m006-s05.sh</code> or <code>pnpm run verify:m006:s05</code>; the focused S05 checks are the package generic-skill test, the DSLogic provider regression test, and the README/SKILL support-matrix grep.
+- When verifying the packaged live/offline contract and the host support story, prefer <code>bash scripts/verify-m010-s05.sh</code> or <code>pnpm run verify:m010:s05</code>; the focused S05 checks are the package generic-skill test, the DSLogic provider regression test, and the README/SKILL support-matrix grep.
 - Keep user-visible reporting aligned with the returned structured payloads.
 - Preserve cleanup diagnostics when reporting post-allocation failures.
 - After a successful packaged run, explicitly call <code>endSession(...)</code> through the package-root surface when the host wants to return the device to <code>free</code>.

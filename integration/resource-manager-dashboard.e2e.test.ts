@@ -163,6 +163,72 @@ const backendMissingSnapshot: InventorySnapshot = {
   ]
 };
 
+const unsupportedOnlySnapshot: InventorySnapshot = {
+  refreshedAt: REFRESHED_AT,
+  inventoryScope: {
+    providerKinds: ["dslogic"],
+    backendKinds: ["libsigrok"]
+  },
+  devices: [
+    {
+      deviceId: "logic-pango",
+      label: "DSLogic V421/Pango",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "free",
+      ownerSkillId: null,
+      lastSeenAt: REFRESHED_AT,
+      updatedAt: REFRESHED_AT,
+      readiness: "unsupported",
+      diagnostics: [
+        {
+          code: "device-unsupported-variant",
+          severity: "error",
+          target: "device",
+          message: "Variant V421/Pango (2a0e:0030) is not supported.",
+          deviceId: "logic-pango",
+          backendKind: "libsigrok"
+        }
+      ],
+      providerKind: "dslogic",
+      backendKind: "libsigrok",
+      canonicalIdentity: {
+        providerKind: "dslogic",
+        providerDeviceId: "logic-pango",
+        canonicalKey: "dslogic:logic-pango"
+      },
+      dslogic: {
+        family: "dslogic",
+        model: "dslogic-plus",
+        modelDisplayName: "DSLogic Plus",
+        variant: "v421-pango",
+        usbVendorId: "2a0e",
+        usbProductId: "0030"
+      }
+    }
+  ],
+  backendReadiness: [
+    {
+      platform: "linux",
+      backendKind: "libsigrok",
+      readiness: "ready",
+      version: "0.6.0",
+      checkedAt: REFRESHED_AT,
+      diagnostics: []
+    }
+  ],
+  diagnostics: [
+    {
+      code: "device-unsupported-variant",
+      severity: "error",
+      target: "device",
+      message: "Variant V421/Pango (2a0e:0030) is not supported.",
+      deviceId: "logic-pango",
+      backendKind: "libsigrok"
+    }
+  ]
+};
+
 class StubElement {
   textContent = "";
   innerHTML = "";
@@ -449,7 +515,7 @@ describe("resource-manager dashboard browser truth", () => {
           expectHtmlToContain(harness.elements["#overview"], "Ready");
           expectHtmlToContain(harness.elements["#device-cards"], "DSLogic Plus Ready");
           expectHtmlToContain(harness.elements["#device-cards"], "available");
-          expectHtmlToContain(harness.elements["#backend-readiness"], "/opt/homebrew/lib/libsigrok.dylib");
+          expectHtmlToContain(harness.elements["#backend-readiness"], "0.6.0");
           expect(harness.elements["#diagnostics"].innerHTML).toContain("No global diagnostics reported.");
         });
 
@@ -577,6 +643,63 @@ describe("resource-manager dashboard browser truth", () => {
           expectHtmlToContain(harness.elements["#device-cards"], "available");
           expect(harness.elements["#device-cards"].innerHTML).not.toContain("skill-live-browser");
           expect(harness.elements["#device-summary"].textContent).toContain("0 allocated");
+        });
+      } finally {
+        await harness.close();
+      }
+    });
+  });
+
+  it("shows unsupported authoritative rows in the dashboard while compatibility routes stay empty", async () => {
+    await withDashboardServer(healthySnapshot, async ({ url, provider }) => {
+      const harness = await createDashboardHarness(url);
+
+      try {
+        await waitFor(() => {
+          expect(harness.elements["#system-status-pill"].textContent).toBe("Healthy");
+        });
+
+        provider.setInventorySnapshot(unsupportedOnlySnapshot);
+        const refreshed = await fetchJson<InventorySnapshot>(`${url}/inventory/refresh`, {
+          method: "POST",
+        });
+        expect(refreshed.devices[0]?.readiness).toBe("unsupported");
+
+        await waitFor(async () => {
+          const snapshot = await fetchJson<DashboardSnapshot>(`${url}/dashboard-snapshot`);
+          const compatibilityDevices = await fetchJson<InventorySnapshot["devices"]>(`${url}/devices`);
+          const refreshedCompatibilityDevices = await fetchJson<InventorySnapshot["devices"]>(`${url}/refresh`, {
+            method: "POST",
+          });
+
+          expect(snapshot.overview).toMatchObject({
+            totalDevices: 1,
+            readyDevices: 0,
+            unsupportedDevices: 1,
+            availableDevices: 1,
+            backendReady: 1,
+          });
+          expect(snapshot.devices).toEqual([
+            expect.objectContaining({
+              deviceId: "logic-pango",
+              readinessBadge: "unsupported",
+              occupancyState: "available",
+            }),
+          ]);
+          expect(compatibilityDevices).toEqual([]);
+          expect(refreshedCompatibilityDevices).toEqual([]);
+          expect(harness.elements["#system-status-pill"].dataset.state).toBe("attention");
+          expect(harness.elements["#system-status-pill"].textContent).toBe("Attention needed");
+          expect(harness.elements["#system-status-summary"].textContent).toContain(
+            "device entry unavailable or abnormal"
+          );
+          expectHtmlToContain(harness.elements["#device-cards"], "DSLogic V421/Pango");
+          expectHtmlToContain(harness.elements["#device-cards"], "unsupported");
+          expect(harness.elements["#device-summary"].textContent).toContain("0 supported devices");
+          expectHtmlToContain(
+            harness.elements["#diagnostics"],
+            "Variant V421/Pango (2a0e:0030) is not supported."
+          );
         });
       } finally {
         await harness.close();
