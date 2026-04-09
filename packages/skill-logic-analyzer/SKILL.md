@@ -81,9 +81,9 @@ Treat nested payloads as authoritative diagnostics. Do not replace them with a n
 Use the package README's DSLogic support matrix as the operator-facing truth.
 
 Support summary:
-- macOS + `sigrok-cli`: `live-proven` in M010 when backend readiness is `ready`, the classic DSLogic device is `ready`, and the packaged acceptance seam still passes.
-- Linux: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful operator diagnostics instead of implied live support.
-- Windows: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful operator diagnostics instead of implied live support.
+- macOS + `dsview-cli`: `live-proven` in M010 when backend readiness is `ready`, the classic DSLogic Plus path is `ready`, and the packaged acceptance seam still passes.
+- Linux: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful `dsview-cli` operator diagnostics instead of implied live support.
+- Windows: `readiness-modeled`; treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as truthful `dsview-cli` operator diagnostics instead of implied live support.
 
 Keep the shared contract vocabulary intact:
 - device readiness: <code>ready</code>, <code>degraded</code>, <code>unsupported</code>

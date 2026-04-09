@@ -35,6 +35,50 @@ const fixtureCsvText = [
   "3,0,0"
 ].join("\n");
 
+const fixtureVcdText = [
+  "$date",
+  "  2026-03-26T00:00:01.000Z",
+  "$end",
+  "$version DSView $end",
+  "$timescale 1 ns $end",
+  "$scope module logic $end",
+  "$var wire 1 ! D0 $end",
+  "$var wire 1 \" D1 $end",
+  "$upscope $end",
+  "$enddefinitions $end",
+  "#0",
+  "$dumpvars",
+  "0!",
+  "1\"",
+  "$end",
+  "#1000",
+  "1!",
+  "#2000",
+  "0\"",
+  "#3000",
+  "0!"
+].join("\n");
+
+const incompatibleFixtureVcdText = [
+  "$date",
+  "  2026-03-26T00:00:01.000Z",
+  "$end",
+  "$version DSView $end",
+  "$timescale 1 ns $end",
+  "$scope module logic $end",
+  "$var wire 1 ! D0 $end",
+  "$upscope $end",
+  "$enddefinitions $end",
+  "#0",
+  "$dumpvars",
+  "0!",
+  "$end",
+  "#1000",
+  "1!",
+  "#2000",
+  "0!"
+].join("\n");
+
 const createClock = (...timestamps: string[]) => {
   let index = 0;
 
@@ -58,7 +102,7 @@ const createInventoryDevice = (
   readiness: "ready",
   diagnostics: [],
   providerKind: "dslogic",
-  backendKind: "libsigrok",
+  backendKind: "dsview-cli",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -76,13 +120,13 @@ const createReadyInventorySnapshot = (
   refreshedAt: connectedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["libsigrok"]
+    backendKinds: ["dsview-cli"]
   },
   devices: [createInventoryDevice()],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
       readiness: "ready",
       version: "1.3.1",
       checkedAt: connectedAt,
@@ -376,10 +420,11 @@ describe("generic logic analyzer contract", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         artifact: {
-          sourceName: "logic-1-live.csv",
-          formatHint: "sigrok-csv",
+          sourceName: "logic-1-live.vcd",
+          formatHint: "dsview-vcd",
+          mediaType: "text/x-vcd",
           capturedAt: captureRequestedAt,
-          text: fixtureCsvText
+          text: fixtureVcdText
         }
       }))
     });
@@ -399,17 +444,17 @@ describe("generic logic analyzer contract", () => {
       },
       capture: {
         ok: true,
-        adapterId: "sigrok-csv",
+        adapterId: "dsview-vcd",
         selectedBy: "format-hint"
       },
       captureSession: {
         ok: true,
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "libsigrok",
+        backendKind: "dsview-cli",
         artifactSummary: {
-          sourceName: "logic-1-live.csv",
-          formatHint: "sigrok-csv",
+          sourceName: "logic-1-live.vcd",
+          formatHint: "dsview-vcd",
           hasText: true
         }
       }
@@ -418,18 +463,18 @@ describe("generic logic analyzer contract", () => {
     if (result.ok && "captureSession" in result) {
       expect("cleanup" in result).toBe(false);
       expect(result.captureSession.capture.capture).toEqual({
-        adapterId: "sigrok-csv",
-        sourceName: "logic-1-live.csv",
+        adapterId: "dsview-vcd",
+        sourceName: "logic-1-live.vcd",
         capturedAt: captureRequestedAt,
         sampleRateHz: 1_000_000,
         samplePeriodNs: 1000,
         totalSamples: 4,
         durationNs: 4000,
         artifact: {
-          sourceName: "logic-1-live.csv",
+          sourceName: "logic-1-live.vcd",
           hasText: true,
-          formatHint: "sigrok-csv",
-          mediaType: null,
+          formatHint: "dsview-vcd",
+          mediaType: "text/x-vcd",
           capturedAt: captureRequestedAt,
           byteLength: null
         },
@@ -484,7 +529,7 @@ describe("generic logic analyzer contract", () => {
         ok: false,
         kind: "timeout",
         phase: "capture",
-        message: "libsigrok capture timed out.",
+        message: "dsview-cli capture timed out.",
         timeoutMs: 1500,
         stderr: {
           text: "Capture did not complete within 1500ms."
@@ -585,7 +630,7 @@ describe("generic logic analyzer contract", () => {
         return {
           ok: true,
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
           session: {
             sessionId: session.sessionId,
             deviceId: session.deviceId,
@@ -596,12 +641,12 @@ describe("generic logic analyzer contract", () => {
           },
           requestedAt: captureRequestedAt,
           artifact: {
-            sourceName: "broken-live.csv",
-            formatHint: "sigrok-csv"
+            sourceName: "broken-live.vcd",
+            formatHint: "dsview-vcd"
           },
           artifactSummary: {
-            sourceName: "broken-live.csv",
-            formatHint: "sigrok-csv",
+            sourceName: "broken-live.vcd",
+            formatHint: "dsview-vcd",
             mediaType: null,
             capturedAt: null,
             byteLength: null,
@@ -630,10 +675,10 @@ describe("generic logic analyzer contract", () => {
         session,
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "libsigrok",
+        backendKind: "dsview-cli",
         artifactSummary: {
-          sourceName: "broken-live.csv",
-          formatHint: "sigrok-csv",
+          sourceName: "broken-live.vcd",
+          formatHint: "dsview-vcd",
           mediaType: null,
           capturedAt: null,
           byteLength: null,
@@ -675,15 +720,10 @@ describe("generic logic analyzer contract", () => {
       liveCaptureRunner: createDslogicLiveCaptureRunner(async () => ({
         ok: true,
         artifact: {
-          sourceName: "logic-1-incompatible.csv",
-          formatHint: "sigrok-csv",
+          sourceName: "logic-1-incompatible.vcd",
+          formatHint: "dsview-vcd",
           capturedAt: captureRequestedAt,
-          text: [
-            "Time [us],D0",
-            "0,0",
-            "0.0416666667,1",
-            "0.0833333333,0"
-          ].join("\n")
+          text: incompatibleFixtureVcdText
         }
       }))
     });
@@ -705,9 +745,9 @@ describe("generic logic analyzer contract", () => {
         reason: "load-capture-failed",
         requestedAt: captureRequestedAt,
         providerKind: "dslogic",
-        backendKind: "libsigrok",
+        backendKind: "dsview-cli",
         artifactSummary: {
-          sourceName: "logic-1-incompatible.csv",
+          sourceName: "logic-1-incompatible.vcd",
           hasText: true
         },
         loadCapture: {

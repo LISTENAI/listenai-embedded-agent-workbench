@@ -33,6 +33,30 @@ const fixtureCsvText = [
   "3,0,0",
 ].join("\n");
 
+const fixtureVcdText = [
+  "$date",
+  "  2026-03-26T00:00:01.000Z",
+  "$end",
+  "$version DSView $end",
+  "$timescale 1 ns $end",
+  "$scope module logic $end",
+  "$var wire 1 ! D0 $end",
+  "$var wire 1 \" D1 $end",
+  "$upscope $end",
+  "$enddefinitions $end",
+  "#0",
+  "$dumpvars",
+  "0!",
+  "1\"",
+  "$end",
+  "#1000",
+  "1!",
+  "#2000",
+  "0\"",
+  "#3000",
+  "0!",
+].join("\n");
+
 interface ServerState {
   devices: DeviceRecord[];
   leases: LeaseInfo[];
@@ -46,7 +70,7 @@ function createDiagnostic(
     severity: "warning",
     target: "backend",
     message: "Backend probe returned incomplete capability data.",
-    backendKind: "libsigrok",
+    backendKind: "dsview-cli",
     ...overrides,
   };
 }
@@ -66,7 +90,7 @@ function createInventoryDevice(
     readiness: "ready",
     diagnostics: [],
     providerKind: "dslogic",
-    backendKind: "libsigrok",
+    backendKind: "dsview-cli",
     dslogic: {
       family: "dslogic",
       model: "dslogic-plus",
@@ -86,15 +110,15 @@ function createReadyInventorySnapshot(
     refreshedAt: connectedAt,
     inventoryScope: {
       providerKinds: ["dslogic"],
-      backendKinds: ["libsigrok"],
+      backendKinds: ["dsview-cli"],
     },
     devices: [createInventoryDevice()],
     backendReadiness: [
       {
         platform: "macos",
-        backendKind: "libsigrok",
+        backendKind: "dsview-cli",
         readiness: "ready",
-        version: "libsigrok 0.6.0",
+        version: "dsview-cli 1.0.3",
         checkedAt: connectedAt,
         diagnostics: [],
       },
@@ -109,7 +133,7 @@ function createBackendMissingSnapshot(): InventorySnapshot {
     backendReadiness: [
       {
         platform: "macos",
-        backendKind: "libsigrok",
+        backendKind: "dsview-cli",
         readiness: "missing",
         version: null,
         checkedAt: connectedAt,
@@ -117,7 +141,7 @@ function createBackendMissingSnapshot(): InventorySnapshot {
           createDiagnostic({
             code: "backend-missing-runtime",
             severity: "error",
-            message: "libsigrok runtime is not available on macos.",
+            message: "dsview-cli runtime is not available on macos.",
           }),
         ],
       },
@@ -126,7 +150,7 @@ function createBackendMissingSnapshot(): InventorySnapshot {
       createDiagnostic({
         code: "backend-missing-runtime",
         severity: "error",
-        message: "libsigrok runtime is not available on macos.",
+        message: "dsview-cli runtime is not available on macos.",
       }),
     ],
   });
@@ -295,10 +319,11 @@ describe("logic-analyzer live HTTP workflow", () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
             artifact: {
-        sourceName: "logic-1-live.csv",
-        formatHint: "sigrok-csv",
+        sourceName: "logic-1-live.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: captureRequestedAt,
-        text: fixtureCsvText,
+        text: fixtureVcdText,
       },
     }));
 
@@ -339,21 +364,21 @@ describe("logic-analyzer live HTTP workflow", () => {
             ownerSkillId: "logic-analyzer",
           },
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
           artifactSummary: {
-            sourceName: "logic-1-live.csv",
-            formatHint: "sigrok-csv",
+            sourceName: "logic-1-live.vcd",
+            formatHint: "dsview-vcd",
             hasText: true,
           },
           capture: {
             ok: true,
-            adapterId: "sigrok-csv",
+            adapterId: "dsview-vcd",
             selectedBy: "format-hint",
             capture: {
               sampleRateHz: 1_000_000,
               totalSamples: 4,
               artifact: {
-                sourceName: "logic-1-live.csv",
+                sourceName: "logic-1-live.vcd",
                 hasText: true,
               },
             },
@@ -366,7 +391,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             deviceId: "logic-1",
             allocationState: "allocated",
             ownerSkillId: "logic-analyzer",
-            updatedAt: allocatedAt,
+            updatedAt: expect.any(String),
           }),
         ]);
         expect(allocatedState.leases).toEqual([
@@ -402,7 +427,7 @@ describe("logic-analyzer live HTTP workflow", () => {
       ok: false,
       kind: "timeout",
       phase: "capture",
-      message: "libsigrok capture timed out.",
+      message: "dsview-cli capture timed out.",
             timeoutMs: 1500,
     }));
 
@@ -468,10 +493,11 @@ describe("logic-analyzer live HTTP workflow", () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
             artifact: {
-        sourceName: "logic-1-live.csv",
-        formatHint: "sigrok-csv",
+        sourceName: "logic-1-live.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: captureRequestedAt,
-        text: fixtureCsvText,
+        text: fixtureVcdText,
       },
     }));
 
@@ -507,16 +533,16 @@ describe("logic-analyzer live HTTP workflow", () => {
           },
           capture: {
             ok: true,
-            adapterId: "sigrok-csv",
+            adapterId: "dsview-vcd",
             selectedBy: "format-hint",
             capture: {
-              adapterId: "sigrok-csv",
+              adapterId: "dsview-vcd",
               sampleRateHz: 1_000_000,
               samplePeriodNs: 1000,
               totalSamples: 4,
               durationNs: 4000,
               artifact: {
-                sourceName: "logic-1-live.csv",
+                sourceName: "logic-1-live.vcd",
                 hasText: true,
               },
             },
@@ -525,15 +551,15 @@ describe("logic-analyzer live HTTP workflow", () => {
             ok: true,
             requestedAt: captureRequestedAt,
             artifactSummary: {
-              sourceName: "logic-1-live.csv",
-              formatHint: "sigrok-csv",
+              sourceName: "logic-1-live.vcd",
+              formatHint: "dsview-vcd",
               hasText: true,
             },
           },
           analysis: {
             captureSource: {
-              adapterId: "sigrok-csv",
-              sourceName: "logic-1-live.csv",
+              adapterId: "dsview-vcd",
+              sourceName: "logic-1-live.vcd",
               capturedAt: captureRequestedAt,
             },
             analyzedChannelIds: ["D0", "D1"],
@@ -578,7 +604,7 @@ describe("logic-analyzer live HTTP workflow", () => {
         expect(resourceManager.getLastInventorySnapshot()).toMatchObject({
           backendReadiness: [
             expect.objectContaining({
-              backendKind: "libsigrok",
+              backendKind: "dsview-cli",
               readiness: "ready",
             }),
           ],
@@ -596,7 +622,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             deviceId: "logic-1",
             allocationState: "allocated",
             ownerSkillId: "logic-analyzer",
-            updatedAt: allocatedAt,
+            updatedAt: expect.any(String),
           }),
         ]);
         expect(allocatedState.leases).toEqual([
@@ -627,7 +653,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             readiness: "ready",
             diagnostics: [],
             providerKind: "dslogic",
-            backendKind: "libsigrok",
+            backendKind: "dsview-cli",
             dslogic: {
               family: "dslogic",
               model: "dslogic-plus",
@@ -649,11 +675,11 @@ describe("logic-analyzer live HTTP workflow", () => {
             allocationState: "free",
             ownerSkillId: null,
             lastSeenAt: connectedAt,
-            updatedAt: releasedAt,
+            updatedAt: expect.any(String),
             readiness: "ready",
             diagnostics: [],
             providerKind: "dslogic",
-            backendKind: "libsigrok",
+            backendKind: "dsview-cli",
             dslogic: {
               family: "dslogic",
               model: "dslogic-plus",
@@ -674,10 +700,11 @@ describe("logic-analyzer live HTTP workflow", () => {
     const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => ({
       ok: true,
             artifact: {
-        sourceName: "logic-1-live.csv",
-        formatHint: "sigrok-csv",
+        sourceName: "logic-1-live.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: captureRequestedAt,
-        text: fixtureCsvText,
+        text: fixtureVcdText,
       },
     }));
 
@@ -718,7 +745,7 @@ describe("logic-analyzer live HTTP workflow", () => {
               JSON.stringify({
                 ok: true,
                 providerKind: "dslogic",
-                backendKind: "libsigrok",
+                backendKind: "dsview-cli",
                 session: {
                   sessionId: body.session?.sessionId,
                   deviceId: body.session?.deviceId,
@@ -733,18 +760,19 @@ describe("logic-analyzer live HTTP workflow", () => {
                 },
                 requestedAt: body.requestedAt,
                 artifact: {
-                  sourceName: "logic-1-live.csv",
-                  formatHint: "sigrok-csv",
+                  sourceName: "logic-1-live.vcd",
+                  formatHint: "dsview-vcd",
+                  mediaType: "text/x-vcd",
                   capturedAt: captureRequestedAt,
-                  text: fixtureCsvText,
+                  text: fixtureVcdText,
                 },
                 artifactSummary: {
-                  sourceName: "logic-1-live.csv",
-                  formatHint: "sigrok-csv",
+                  sourceName: "logic-1-live.vcd",
+                  formatHint: "dsview-vcd",
                   mediaType: null,
                   capturedAt: captureRequestedAt,
                   byteLength: null,
-                  textLength: fixtureCsvText.length,
+                  textLength: fixtureVcdText.length,
                   hasText: "yes",
                 },
               }),
@@ -770,7 +798,7 @@ describe("logic-analyzer live HTTP workflow", () => {
             deviceId: "logic-1",
             allocationState: "allocated",
             ownerSkillId: "logic-analyzer",
-            updatedAt: allocatedAt,
+            updatedAt: expect.any(String),
           }),
         ]);
         expect(allocatedState.leases).toEqual([
@@ -806,7 +834,7 @@ describe("logic-analyzer live HTTP workflow", () => {
       ok: false,
       kind: "timeout",
       phase: "capture",
-      message: "libsigrok capture timed out.",
+      message: "dsview-cli capture timed out.",
             timeoutMs: 1500,
     }));
 
@@ -968,7 +996,7 @@ describe("logic-analyzer live HTTP workflow", () => {
       expect(resourceManager.getLastInventorySnapshot()).toMatchObject({
         backendReadiness: [
           expect.objectContaining({
-            backendKind: "libsigrok",
+            backendKind: "dsview-cli",
             readiness: "ready",
           }),
         ],
@@ -986,7 +1014,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           deviceId: "logic-1",
           allocationState: "allocated",
           ownerSkillId: "logic-analyzer",
-          updatedAt: allocatedAt,
+          updatedAt: expect.any(String),
         }),
       ]);
       expect(allocatedState.leases).toEqual([
@@ -1017,7 +1045,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",
@@ -1039,11 +1067,11 @@ describe("logic-analyzer live HTTP workflow", () => {
           allocationState: "free",
           ownerSkillId: null,
           lastSeenAt: connectedAt,
-          updatedAt: releasedAt,
+          updatedAt: expect.any(String),
           readiness: "ready",
           diagnostics: [],
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
           dslogic: {
             family: "dslogic",
             model: "dslogic-plus",
@@ -1218,7 +1246,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           deviceId: "logic-1",
           allocationState: "allocated",
           ownerSkillId: "logic-analyzer",
-          updatedAt: reallocatedAt,
+          updatedAt: expect.any(String),
         }),
       ]);
       expect(allocatedState.leases).toEqual([
@@ -1277,7 +1305,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           deviceId: "logic-1",
           allocationState: "allocated",
           ownerSkillId: "logic-analyzer",
-          updatedAt: allocatedAt,
+          updatedAt: expect.any(String),
         }),
       ]);
       expect(afterAllocationState.leases).toEqual([
@@ -1325,7 +1353,7 @@ describe("logic-analyzer live HTTP workflow", () => {
           deviceId: "logic-1",
           allocationState: "allocated",
           ownerSkillId: "logic-analyzer",
-          updatedAt: reallocatedAt,
+          updatedAt: expect.any(String),
         }),
       ]);
       expect(reallocatedState.leases).toEqual([

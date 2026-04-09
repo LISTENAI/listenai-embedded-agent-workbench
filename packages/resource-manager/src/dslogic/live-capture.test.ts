@@ -54,6 +54,31 @@ const createSession = (channelCount = 2): LiveCaptureSession => ({
   }
 });
 
+
+const fixtureVcdText = [
+  "$date",
+  "  2026-03-30T10:00:06.000Z",
+  "$end",
+  "$version DSView $end",
+  "$timescale 1 ns $end",
+  "$scope module logic $end",
+  "$var wire 1 ! D0 $end",
+  "$var wire 1 \" D1 $end",
+  "$upscope $end",
+  "$enddefinitions $end",
+  "#0",
+  "$dumpvars",
+  "0!",
+  "1\"",
+  "$end",
+  "#1000",
+  "1!",
+  "#2000",
+  "0\"",
+  "#3000",
+  "0!"
+].join("\n");
+
 describe("DSLogic live capture seam", () => {
   it("exposes typed live capture contracts through the root barrel", () => {
     expect(LIVE_CAPTURE_FAILURE_PHASES).toEqual([
@@ -117,10 +142,10 @@ describe("DSLogic live capture seam", () => {
         ok: true,
         backendVersion: "1.0.3",
         artifact: {
-          sourceName: "logic-1.csv",
-          formatHint: "sigrok-csv",
-          mediaType: "text/csv",
-          text: "Time [us],D0,D1\n0,0,1\n"
+          sourceName: "logic-1.vcd",
+          formatHint: "dsview-vcd",
+          mediaType: "text/x-vcd",
+          text: fixtureVcdText
         }
       };
     });
@@ -145,7 +170,7 @@ describe("DSLogic live capture seam", () => {
   });
 
   it("returns a CaptureArtifactInput-compatible success result for a minimal 2-channel request", async () => {
-    const artifactText = "Time [us],D0,D1\n0,0,1\n1,1,1\n";
+    const artifactText = fixtureVcdText;
     const request = createLiveCaptureRequest(createSession(2), {
       requestedAt: "2026-03-30T10:00:05.000Z",
       timeoutMs: 2_000
@@ -155,9 +180,9 @@ describe("DSLogic live capture seam", () => {
       backendVersion: "1.0.3",
       diagnosticOutput: { text: "capture ready" },
       artifact: {
-        sourceName: "logic-1.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv",
+        sourceName: "logic-1.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: "2026-03-30T10:00:06.000Z",
         text: artifactText
       }
@@ -172,16 +197,16 @@ describe("DSLogic live capture seam", () => {
       session: request.session,
       requestedAt: "2026-03-30T10:00:05.000Z",
       artifact: {
-        sourceName: "logic-1.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv",
+        sourceName: "logic-1.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: "2026-03-30T10:00:06.000Z",
         text: artifactText
       },
       artifactSummary: {
-        sourceName: "logic-1.csv",
-        formatHint: "sigrok-csv",
-        mediaType: "text/csv",
+        sourceName: "logic-1.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
         capturedAt: "2026-03-30T10:00:06.000Z",
         byteLength: null,
         textLength: artifactText.length,
@@ -374,8 +399,8 @@ describe("DSLogic live capture seam", () => {
       backendVersion: "1.0.3",
       diagnosticOutput: { text: "capture complete" },
       artifact: {
-        sourceName: "logic-1.csv",
-        formatHint: "sigrok-csv",
+        sourceName: "logic-1.vcd",
+        formatHint: "dsview-vcd",
         text: ""
       }
     }));
@@ -390,8 +415,8 @@ describe("DSLogic live capture seam", () => {
       session: request.session,
       requestedAt: request.session.startedAt,
       artifactSummary: {
-        sourceName: "logic-1.csv",
-        formatHint: "sigrok-csv",
+        sourceName: "logic-1.vcd",
+        formatHint: "dsview-vcd",
         mediaType: null,
         capturedAt: null,
         byteLength: null,

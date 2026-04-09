@@ -211,13 +211,13 @@ if (result.ok) {
 
 ## DSLogic host support matrix
 
-The packaged live DSLogic path is live-proven in M010 only on the macOS host path where `sigrok-cli` is present, the native `libsigrok` runtime resolves behind it, and the classic DSLogic probe succeeds. Linux and Windows remain readiness-modeled future paths: they reuse the same shared readiness vocabulary and diagnostics, but this package does not claim them as equally live-proven capture hosts yet.
+The packaged live DSLogic path is live-proven in M010 only on the macOS host path where `dsview-cli` is present and the classic DSLogic Plus probe resolves as ready. Linux and Windows remain readiness-modeled future paths: they reuse the same shared readiness vocabulary and diagnostics, but this package does not claim them as equally live-proven capture hosts yet.
 
 | Host platform | Backend expectation | Shared readiness labels | Proof status | What operators should inspect |
 | --- | --- | --- | --- | --- |
-| macOS | `sigrok-cli` is available and the native `libsigrok` runtime resolves cleanly for the classic DSLogic probe | backend `ready`, classic DSLogic device `ready` | `live-proven` | Run `bash scripts/verify-m010-s05.sh` or `pnpm run verify:m010:s05`, then inspect `backendReadiness[]`, device `readiness`, and returned diagnostics before broadening the support claim. |
-| Linux | The native runtime may still surface truthful readiness, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
-| Windows | The native runtime may still surface truthful readiness, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
+| macOS | `dsview-cli` is available and the classic DSLogic Plus probe resolves cleanly as the supported device path | backend `ready`, classic DSLogic Plus `ready` | `live-proven` | Run `bash scripts/verify-m010-s05.sh` or `pnpm run verify:m010:s05`, then inspect `backendReadiness[]`, device `readiness`, and returned diagnostics before broadening the support claim. |
+| Linux | `dsview-cli` readiness may still surface truthful diagnostics, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
+| Windows | `dsview-cli` readiness may still surface truthful diagnostics, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
 
 Keep the typed vocabulary from `@listenai/contracts` intact: device readiness is `ready`, `degraded`, or `unsupported`; backend readiness is `ready`, `degraded`, `missing`, or `unsupported`. Hosts should preserve those values in logs, browser surfaces, and operator docs instead of rewriting them into softer install-success language.
 
@@ -230,10 +230,10 @@ bash scripts/verify-m010-s05.sh
 pnpm run verify:m010:s05
 ```
 
-That acceptance seam is the intended operator-facing check for the packaged macOS `sigrok-cli` live proof plus the DSLogic support-matrix assertions. The package-specific focused checks that back the current S05 contract are:
+That acceptance seam is the intended operator-facing check for the packaged macOS `dsview-cli` live proof plus the DSLogic support-matrix assertions. The package-specific focused checks that back the current S05 contract are:
 
 ```bash
 pnpm --filter @listenai/skill-logic-analyzer exec vitest run src/generic-skill.test.ts
 pnpm --filter @listenai/resource-manager exec vitest run src/dslogic/dslogic-device-provider.test.ts
-rg -n "live-proven|readiness-modeled|sigrok-cli|macOS|Linux|Windows|verify:m010:s05" packages/skill-logic-analyzer/README.md packages/skill-logic-analyzer/SKILL.md
+rg -n "live-proven|readiness-modeled|dsview-cli|DSLogic Plus|macOS|Linux|Windows|verify:m010:s05" packages/skill-logic-analyzer/README.md packages/skill-logic-analyzer/SKILL.md
 ```

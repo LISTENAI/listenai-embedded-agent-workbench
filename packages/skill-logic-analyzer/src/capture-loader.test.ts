@@ -21,6 +21,30 @@ const fixtureCsvText = [
   "3,0,0"
 ].join("\n");
 
+const fixtureVcdText = [
+  "$date",
+  "  2026-03-26T00:00:01.000Z",
+  "$end",
+  "$version DSView $end",
+  "$timescale 1 ns $end",
+  "$scope module logic $end",
+  "$var wire 1 ! D0 $end",
+  "$var wire 1 \" D1 $end",
+  "$upscope $end",
+  "$enddefinitions $end",
+  "#0",
+  "$dumpvars",
+  "0!",
+  "1\"",
+  "$end",
+  "#1000",
+  "1!",
+  "#2000",
+  "0\"",
+  "#3000",
+  "0!"
+].join("\n");
+
 const baseSession: LogicAnalyzerSessionRecord = {
   sessionId: "session-001",
   deviceId: "logic-1",
@@ -97,7 +121,8 @@ describe("capture loader contract", () => {
     >();
 
     expect(DEFAULT_CAPTURE_ADAPTERS.map((adapter) => adapter.id)).toEqual([
-      "sigrok-csv"
+      "sigrok-csv",
+      "dsview-vcd"
     ]);
   });
 
@@ -151,6 +176,62 @@ describe("capture loader contract", () => {
     }
   });
 
+  it("normalizes a DSView VCD artifact through format-hint selection", () => {
+    const result = loadLogicCapture({
+      session: baseSession,
+      artifact: {
+        sourceName: "logic-1-live.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
+        capturedAt: "2026-03-26T00:00:01.000Z",
+        text: fixtureVcdText
+      }
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      adapterId: "dsview-vcd",
+      selectedBy: "format-hint"
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.capture).toEqual({
+        adapterId: "dsview-vcd",
+        sourceName: "logic-1-live.vcd",
+        capturedAt: "2026-03-26T00:00:01.000Z",
+        sampleRateHz: 1_000_000,
+        samplePeriodNs: 1000,
+        totalSamples: 4,
+        durationNs: 4000,
+        channels: [
+          {
+            channelId: "D0",
+            initialLevel: 0,
+            transitions: [
+              { sampleIndex: 1, timeNs: 1000, fromLevel: 0, toLevel: 1 },
+              { sampleIndex: 3, timeNs: 3000, fromLevel: 1, toLevel: 0 }
+            ]
+          },
+          {
+            channelId: "D1",
+            initialLevel: 1,
+            transitions: [
+              { sampleIndex: 2, timeNs: 2000, fromLevel: 1, toLevel: 0 }
+            ]
+          }
+        ],
+        artifact: {
+          sourceName: "logic-1-live.vcd",
+          formatHint: "dsview-vcd",
+          mediaType: "text/x-vcd",
+          capturedAt: "2026-03-26T00:00:01.000Z",
+          byteLength: null,
+          hasText: true
+        }
+      });
+    }
+  });
+
   it("returns a typed unsupported-adapter failure when no adapter matches the requested format hint", () => {
     const result = loadLogicCapture({
       session: baseSession,
@@ -164,7 +245,7 @@ describe("capture loader contract", () => {
     expect(result).toEqual({
       ok: false,
       reason: "unsupported-adapter",
-      adapterIds: ["sigrok-csv"],
+      adapterIds: ["sigrok-csv", "dsview-vcd"],
       artifact: {
         sourceName: "capture.saleae",
         formatHint: "saleae-json",

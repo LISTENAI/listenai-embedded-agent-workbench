@@ -8,7 +8,7 @@ ListenAI Agent Skills is a pnpm workspace for using a packaged `resource-manager
 
 This repository currently exposes four user-facing package surfaces:
 
-- `@listenai/resource-manager` - starts the HTTP service, serves the dashboard, exposes inventory and lease APIs, and owns the DSLogic `libsigrok` runtime boundary.
+- `@listenai/resource-manager` - starts the HTTP service, serves the dashboard, exposes inventory and lease APIs, and owns the DSLogic `dsview-cli` runtime boundary.
 - `@listenai/resource-client` - provides the `HttpResourceManager` client for talking to that HTTP service from scripts, hosts, or other packages.
 - `@listenai/skill-logic-analyzer` - provides the packaged logic-analyzer skill surface for artifact analysis and live capture workflows.
 - `@listenai/contracts` - provides the shared request/result and inventory contracts used across the service, client, and skill package.
@@ -144,7 +144,7 @@ What this proves:
 - `bash scripts/verify-m010-s05.sh` - the layered support-story gate rejects stale M006/M009 wording and rechecks the M010 acceptance seam
 - `pnpm run verify:m010:s05` - the repo-facing alias for that same acceptance seam stays wired from the authoritative repo root
 
-The M010 support contract is explicit: macOS via `sigrok-cli` is `live-proven`, while Linux and Windows remain `readiness-modeled` future paths whose truthful diagnostics still include `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`.
+The M010 support contract is explicit: macOS via `dsview-cli` is the only `live-proven` host path, and only the classic DSLogic Plus variant is treated as ready on that path. Linux and Windows remain `readiness-modeled` future paths whose truthful diagnostics still include `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`.
 
 ## If you are contributing instead
 

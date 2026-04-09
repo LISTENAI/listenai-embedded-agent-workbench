@@ -2,7 +2,7 @@
 
 <h4 align="right"><a href="README.md">English</a> | <strong>简体中文</strong></h4>
 
-这个 package 拥有 workspace 中 resource-manager 的运行时边界。它导出内存版 manager、HTTP app/server helpers、lease management、DSLogic provider 集成，以及一个用于启动 HTTP server 的 CLI。现在，打包后的 dashboard 与 API 会把原生 `libsigrok` 运行时当作 backend truth surface，并明确呈现 `ready`、`degraded`、`missing`、`unsupported` 等状态。
+这个 package 拥有 workspace 中 resource-manager 的运行时边界。它导出内存版 manager、HTTP app/server helpers、lease management、DSLogic provider 集成，以及一个用于启动 HTTP server 的 CLI。现在，打包后的 dashboard 与 API 会把原生 `dsview-cli` 运行时当作 backend truth surface，并明确呈现 `ready`、`degraded`、`missing`、`unsupported` 等状态。
 
 如果你是想在这个仓库里使用 server，请先看这里，而不是从仓库根目录去猜它的行为。
 
@@ -47,7 +47,7 @@ CLI 参数：
 
 CLI 也会读取 `RESOURCE_MANAGER_PROVIDER`、`RESOURCE_MANAGER_INVENTORY_POLL_INTERVAL_MS` 和 `RESOURCE_MANAGER_LEASE_SCAN_INTERVAL_MS`；如果环境变量和 CLI 参数同时存在，以 CLI 参数为准。
 
-默认的 `dslogic` 启动路径假设宿主机已经具备原生 `libsigrok` 运行时。本文档重点说明 operator 应该从 `/inventory`、`/dashboard-snapshot` 与浏览器 dashboard 中观察到什么运行时状态，而不是提供平台相关的安装命令。
+默认的 `dslogic` 启动路径假设宿主机已经具备原生 `dsview-cli` 运行时。本文档重点说明 operator 应该从 `/inventory`、`/dashboard-snapshot` 与浏览器 dashboard 中观察到什么运行时状态，而不是提供平台相关的安装命令。
 
 示例：
 
@@ -70,10 +70,10 @@ RESOURCE_MANAGER_PROVIDER=fake pnpm --filter @listenai/resource-manager exec tsx
 
 1. 启动打包后的 `resource-manager` CLI。
 2. 在同一台机器上打开 `http://127.0.0.1:7600/`；如果绑定地址是 `0.0.0.0`，也可以从同一局域网中的其他设备打开 `http://<machine-ip>:7600/`。
-3. 把 dashboard 与 `/dashboard-snapshot` 当作设备占用、owner identity、lease timing，以及 native runtime readiness 的权威观察面，同时保持 M010 的 DSLogic 支持结论明确：只有通过 `sigrok-cli` 的 macOS 路径是 live-proven，Linux 与 Windows 仍然只是 readiness-modeled 的未来路径。
+3. 把 dashboard 与 `/dashboard-snapshot` 当作设备占用、owner identity、lease timing，以及 native runtime readiness 的权威观察面，同时保持 M010 的 DSLogic 支持结论明确：只有通过 `dsview-cli` 的 macOS 路径是 live-proven，而且该路径上只有 classic DSLogic Plus 变体会被视为 ready；Linux 与 Windows 仍然只是 readiness-modeled 的未来路径。
 4. 把 `bash scripts/verify-m010-s05.sh` 或 `pnpm run verify:m010:s05` 当作这个 operator story 的顶层验收 seam。
 
-该 seam 会先快速拦截 dashboard/doc 中残留的陈旧措辞，然后重新执行聚焦的 dashboard/package proof surfaces，并再次检查 operator docs 是否保留当前 macOS `sigrok-cli` live-proof 叙述，以及 `ready`、`degraded`、`missing`、`unsupported` 这些 typed labels 和 `backend-missing-runtime`、`backend-runtime-timeout`、`backend-runtime-malformed-response`、`backend-unsupported-os`、`device-unsupported-variant`、`device-runtime-malformed-response` 等命名诊断。命令通过时，表示已发布的 dashboard entrypoint、API truth、live updates，以及面向 operator 的 runtime 可见性仍然与 M010 支持契约保持一致。
+该 seam 会先快速拦截 dashboard/doc 中残留的陈旧措辞，然后重新执行聚焦的 dashboard/package proof surfaces，并再次检查 operator docs 是否保留当前 macOS `dsview-cli` live-proof 叙述、classic DSLogic Plus 的 ready 路径、`ready`、`degraded`、`missing`、`unsupported` 这些 typed labels，以及 `backend-missing-runtime`、`backend-runtime-timeout`、`backend-runtime-malformed-response`、`backend-unsupported-os`、`device-unsupported-variant`、`device-runtime-malformed-response` 等命名诊断。命令通过时，表示已发布的 dashboard entrypoint、API truth、live updates，以及面向 operator 的 runtime 可见性仍然与 M010 支持契约保持一致。
 
 ## 健康检查与 inventory 检查
 
@@ -93,7 +93,7 @@ curl http://127.0.0.1:7600/health
 
 ### 完整 inventory snapshot
 
-返回 authoritative snapshot，其中包含原生 runtime readiness 与 device diagnostics。针对 `libsigrok`，这里的 backend readiness 可能会显示 `ready`、`degraded`、`missing`、`unsupported`。
+返回 authoritative snapshot，其中包含原生 runtime readiness 与 device diagnostics。针对 `dsview-cli`，这里的 backend readiness 可能会显示 `ready`、`degraded`、`missing`、`unsupported`。
 
 ```bash
 curl http://127.0.0.1:7600/inventory
@@ -203,7 +203,7 @@ curl -X POST http://127.0.0.1:7600/capture/live \
         "readiness": "ready",
         "diagnostics": [],
         "providerKind": "dslogic",
-        "backendKind": "libsigrok"
+        "backendKind": "dsview-cli"
       },
       "sampling": {
         "sampleRateHz": 1000000,
@@ -266,7 +266,7 @@ server.stop();
 - 默认 provider 是 `dslogic`；如果你只是想验证 HTTP surface，可用 `--provider fake`
 - server 默认每 10 秒扫描一次过期租约，并自动释放对应设备
 - 打包后的 CLI 会在收到 `SIGINT` 和 `SIGTERM` 时进行干净退出
-- `GET /health` 只表示存活性；如果要看 `libsigrok` readiness 与 diagnostics，请查看 `/inventory`、`/dashboard-snapshot` 或浏览器 dashboard
+- `GET /health` 只表示存活性；如果要看 `dsview-cli` readiness 与 diagnostics，请查看 `/inventory`、`/dashboard-snapshot` 或浏览器 dashboard
 
 ## 验证
 
@@ -284,7 +284,7 @@ bash scripts/verify-m010-s05.sh
 pnpm run verify:m010:s05
 ```
 
-把 M010 S05 seam 当作已发布 operator 路径的权威验收命令。它会一起证明陈旧措辞保护、聚焦的 dashboard/package truth，以及明确的支持契约：macOS `sigrok-cli` 是 live-proven，而 Linux 与 Windows 仍是带命名诊断的 readiness-modeled 路径。
+把 M010 S05 seam 当作已发布 operator 路径的权威验收命令。它会一起证明陈旧措辞保护、聚焦的 dashboard/package truth，以及明确的支持契约：macOS `dsview-cli` 在 classic DSLogic Plus 路径上是 live-proven，而 Linux 与 Windows 仍是带命名诊断的 readiness-modeled 路径。
 
 同时覆盖这个 package 的仓库级验证路径：
 

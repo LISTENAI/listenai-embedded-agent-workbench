@@ -46,7 +46,7 @@ const createDiagnostic = (
   severity: "warning",
   target: "backend",
   message: "Backend probe returned incomplete capability data.",
-  backendKind: "libsigrok",
+  backendKind: "dsview-cli",
   ...overrides
 });
 
@@ -64,7 +64,7 @@ const createDevice = (
   readiness: "ready",
   diagnostics: [],
   providerKind: "dslogic",
-  backendKind: "libsigrok",
+  backendKind: "dsview-cli",
   dslogic: {
     family: "dslogic",
     model: "dslogic-plus",
@@ -82,13 +82,13 @@ const createSnapshot = (
   refreshedAt,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["libsigrok"]
+    backendKinds: ["dsview-cli"]
   },
   devices: [createDevice()],
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
       readiness: "ready",
       version: "1.3.1",
       checkedAt: refreshedAt,
@@ -302,7 +302,7 @@ describe("evaluateStartSessionConstraints", () => {
         backendReadiness: [
           {
             platform: "macos",
-            backendKind: "libsigrok",
+            backendKind: "dsview-cli",
             readiness: "missing",
             version: null,
             checkedAt: refreshedAt,
@@ -310,7 +310,7 @@ describe("evaluateStartSessionConstraints", () => {
               createDiagnostic({
                 code: "backend-missing-runtime",
                 severity: "error",
-                message: "libsigrok was not found on PATH."
+                message: "dsview-cli runtime is not available on macos."
               })
             ]
           }
@@ -319,7 +319,7 @@ describe("evaluateStartSessionConstraints", () => {
           createDiagnostic({
             code: "backend-missing-runtime",
             severity: "error",
-            message: "libsigrok was not found on PATH."
+            message: "dsview-cli runtime is not available on macos."
           })
         ]
       }),
@@ -331,14 +331,14 @@ describe("evaluateStartSessionConstraints", () => {
         backendReadiness: [
           {
             platform: "macos",
-            backendKind: "libsigrok",
+            backendKind: "dsview-cli",
             readiness: "degraded",
             version: "1.3.1",
             checkedAt: refreshedAt,
             diagnostics: [
               createDiagnostic({
                 code: "backend-runtime-timeout",
-                message: "Backend probe timed out before capabilities were confirmed."
+                message: "dsview-cli runtime probe timed out before readiness was confirmed on macos."
               })
             ]
           }

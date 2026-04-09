@@ -7,6 +7,7 @@ import type {
   LogicCaptureAdapter
 } from "./capture-contracts.js";
 import { summarizeCaptureArtifact } from "./capture-contracts.js";
+import { dsviewVcdAdapter } from "./adapters/dsview-vcd-adapter.js";
 import { sigrokCsvAdapter } from "./adapters/sigrok-csv-adapter.js";
 
 export interface CaptureLoaderOptions {
@@ -18,7 +19,7 @@ interface SelectedAdapter {
   selectedBy: "format-hint" | "probe";
 }
 
-const DEFAULT_ADAPTERS = [sigrokCsvAdapter] as const;
+const DEFAULT_ADAPTERS = [sigrokCsvAdapter, dsviewVcdAdapter] as const;
 const SAMPLE_RATE_TOLERANCE_RATIO = 0.01;
 
 const normalizeHint = (value: string): string => value.trim().toLowerCase();

@@ -2,7 +2,7 @@
 
 <h4 align="right"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></h4>
 
-This package owns the resource-manager runtime surface for the workspace. It exports the in-memory manager, HTTP app/server helpers, lease management, DSLogic provider integration, and a CLI that starts the HTTP server. The shipped dashboard and API now present the native `libsigrok` runtime as the backend truth surface, including `ready`, `degraded`, `missing`, and `unsupported` states.
+This package owns the resource-manager runtime surface for the workspace. It exports the in-memory manager, HTTP app/server helpers, lease management, DSLogic provider integration, and a CLI that starts the HTTP server. The shipped dashboard and API now present the native `dsview-cli` runtime as the backend truth surface, including `ready`, `degraded`, `missing`, and `unsupported` states.
 
 If you are trying to use the server from this repository, start here instead of inferring behavior from the repo root.
 
@@ -47,7 +47,7 @@ CLI options:
 
 The CLI also reads `RESOURCE_MANAGER_PROVIDER`, `RESOURCE_MANAGER_INVENTORY_POLL_INTERVAL_MS`, and `RESOURCE_MANAGER_LEASE_SCAN_INTERVAL_MS`; if both env vars and CLI flags are present, the CLI flags win.
 
-Default `dslogic` startup assumes the host already has the native `libsigrok` runtime available. This README intentionally documents what operators should observe from `/inventory`, `/dashboard-snapshot`, and the browser dashboard when that runtime is healthy, degraded, missing, or unsupported; it does not prescribe platform-specific install commands.
+Default `dslogic` startup assumes the host already has the native `dsview-cli` runtime available. This README intentionally documents what operators should observe from `/inventory`, `/dashboard-snapshot`, and the browser dashboard when that runtime is healthy, degraded, missing, or unsupported; it does not prescribe platform-specific install commands.
 
 Examples:
 
@@ -71,10 +71,10 @@ The shipped operator path is one runtime, one browser entrypoint, and one accept
 
 1. Start the packaged `resource-manager` CLI.
 2. Open `http://127.0.0.1:7600/` from the same machine, or `http://<machine-ip>:7600/` from another device on the same LAN when the host binding is `0.0.0.0`.
-3. Use the dashboard and `/dashboard-snapshot` as the operator truth surface for device occupancy, owner identity, lease timing, and native runtime readiness, while keeping the M010 DSLogic support claim explicit: macOS via `sigrok-cli` is the only live-proven host path; Linux and Windows remain readiness-modeled future paths.
+3. Use the dashboard and `/dashboard-snapshot` as the operator truth surface for device occupancy, owner identity, lease timing, and native runtime readiness, while keeping the M010 DSLogic support claim explicit: macOS via `dsview-cli` is the only live-proven host path, and the only ready device claim on that path is the classic DSLogic Plus variant; Linux and Windows remain readiness-modeled future paths.
 4. Treat `bash scripts/verify-m010-s05.sh` or `pnpm run verify:m010:s05` as the top-level acceptance seam for this operator story.
 
-That seam fails fast on stale dashboard/doc wording, reruns the focused dashboard and package proof surfaces, and rechecks the operator docs for the current macOS `sigrok-cli` live-proof wording plus the typed `ready`, `degraded`, `missing`, and `unsupported` labels and named diagnostics such as `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`. A passing run means the shipped dashboard entrypoint, API truth, live updates, and operator-facing runtime visibility still agree with the M010 support contract.
+That seam fails fast on stale dashboard/doc wording, reruns the focused dashboard and package proof surfaces, and rechecks the operator docs for the current macOS `dsview-cli` live-proof wording, the classic DSLogic Plus ready path, the typed `ready`, `degraded`, `missing`, and `unsupported` labels, and named diagnostics such as `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response`. A passing run means the shipped dashboard entrypoint, API truth, live updates, and operator-facing runtime visibility still agree with the M010 support contract.
 
 ## Dashboard entrypoint and live stream
 
@@ -111,7 +111,7 @@ Expected shape:
 
 ### Full inventory snapshot
 
-Returns the authoritative snapshot, including native runtime readiness and device diagnostics. Expect backend readiness labels such as `ready`, `degraded`, `missing`, or `unsupported` when probing `libsigrok`.
+Returns the authoritative snapshot, including native runtime readiness and device diagnostics. Expect backend readiness labels such as `ready`, `degraded`, `missing`, or `unsupported` when probing `dsview-cli`.
 
 ```bash
 curl http://127.0.0.1:7600/inventory
@@ -221,7 +221,7 @@ curl -X POST http://127.0.0.1:7600/capture/live \
         "readiness": "ready",
         "diagnostics": [],
         "providerKind": "dslogic",
-        "backendKind": "libsigrok"
+        "backendKind": "dsview-cli"
       },
       "sampling": {
         "sampleRateHz": 1000000,
@@ -284,7 +284,7 @@ server.stop();
 - The default provider is `dslogic`; use `--provider fake` when you only need to verify the HTTP surface.
 - The server scans for expired leases every 10 seconds by default and releases matching devices automatically.
 - `SIGINT` and `SIGTERM` trigger a clean stop in the packaged CLI.
-- `GET /health` is liveness only. For `libsigrok` readiness and diagnostics, inspect `/inventory`, `/dashboard-snapshot`, or the browser dashboard.
+- `GET /health` is liveness only. For `dsview-cli` readiness and diagnostics, inspect `/inventory`, `/dashboard-snapshot`, or the browser dashboard.
 
 ## Verification
 
@@ -302,7 +302,7 @@ bash scripts/verify-m010-s05.sh
 pnpm run verify:m010:s05
 ```
 
-Use the M010 S05 seam as the authoritative acceptance command for the shipped operator path. It proves stale-wording protection, focused dashboard/package truth, and the explicit support contract that keeps macOS `sigrok-cli` live-proven while Linux and Windows remain readiness-modeled with named diagnostics.
+Use the M010 S05 seam as the authoritative acceptance command for the shipped operator path. It proves stale-wording protection, focused dashboard/package truth, and the explicit support contract that keeps macOS `dsview-cli` live-proven for the classic DSLogic Plus path while Linux and Windows remain readiness-modeled with named diagnostics.
 
 Repo-level verification paths that also exercise this package:
 
