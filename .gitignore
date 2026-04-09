@@ -27,3 +27,7 @@ coverage/
 .cache/
 tmp/
 *.tsbuildinfo
+
+# ── GSD baseline (auto-generated) ──
+.gsd-id
+.bg-shell/
