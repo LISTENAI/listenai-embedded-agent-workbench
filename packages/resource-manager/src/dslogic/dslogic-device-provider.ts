@@ -232,9 +232,3 @@ export class DslogicDeviceProvider implements DeviceProvider {
       .map(toDiscoveredDevice)
   }
 }
-napshot()
-    return snapshot.devices
-      .filter(isCompatibilityVisible)
-      .map(toDiscoveredDevice)
-  }
-}

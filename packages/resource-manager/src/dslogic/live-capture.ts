@@ -286,9 +286,3 @@ export const createLiveCaptureRequest = (
   requestedAt: overrides.requestedAt ?? session.startedAt,
   timeoutMs: overrides.timeoutMs
 });
-des: Partial<Omit<LiveCaptureRequest, "session">> = {}
-): LiveCaptureRequest => ({
-  session,
-  requestedAt: overrides.requestedAt ?? session.startedAt,
-  timeoutMs: overrides.timeoutMs
-});

@@ -13,7 +13,7 @@ const packagedSnapshot: InventorySnapshot = {
   refreshedAt: REFRESHED_AT,
   inventoryScope: {
     providerKinds: ["dslogic"],
-    backendKinds: ["libsigrok"],
+    backendKinds: ["dsview-cli"],
   },
   devices: [
     {
@@ -28,7 +28,7 @@ const packagedSnapshot: InventorySnapshot = {
       readiness: "ready",
       diagnostics: [],
       providerKind: "dslogic",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "logic-ready",
@@ -60,11 +60,11 @@ const packagedSnapshot: InventorySnapshot = {
           target: "device",
           message: "Variant V421/Pango (2a0e:0030) is not supported.",
           deviceId: "logic-unsupported",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
         },
       ],
       providerKind: "dslogic",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
       canonicalIdentity: {
         providerKind: "dslogic",
         providerDeviceId: "logic-unsupported",
@@ -83,9 +83,9 @@ const packagedSnapshot: InventorySnapshot = {
   backendReadiness: [
     {
       platform: "macos",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
       readiness: "ready",
-      version: "libsigrok 0.6.0",
+      version: "dsview-cli 1.0.3",
       checkedAt: REFRESHED_AT,
       diagnostics: [],
     },
@@ -97,7 +97,7 @@ const packagedSnapshot: InventorySnapshot = {
       target: "device",
       message: "Variant V421/Pango (2a0e:0030) is not supported.",
       deviceId: "logic-unsupported",
-      backendKind: "libsigrok",
+      backendKind: "dsview-cli",
     },
   ],
 };
@@ -333,7 +333,7 @@ describe("resource-manager packaged CLI", () => {
           deviceId: "logic-ready",
           readiness: "ready",
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
         }),
       ]);
 
@@ -345,7 +345,7 @@ describe("resource-manager packaged CLI", () => {
           deviceId: "logic-ready",
           readiness: "ready",
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "dsview-cli",
         }),
       ]);
 
