@@ -14,9 +14,10 @@ if rg -n '\bawait-runner\b' \
   exit 1
 fi
 
-echo "[verify-m010-s03] focused DSLogic native seam"
+echo "[verify-m010-s03] focused DSLogic runtime and provider seam"
 pnpm --filter @listenai/resource-manager exec vitest run \
   ./src/dslogic/native-runtime.test.ts \
+  ./src/dslogic/dslogic-device-provider.test.ts \
   ./src/dslogic/live-capture.test.ts
 
 echo "[verify-m010-s03] default provider and HTTP composition"

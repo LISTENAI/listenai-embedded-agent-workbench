@@ -10,8 +10,6 @@ import type {
   LiveCaptureProvider
 } from "../device-provider.js"
 import {
-  DSLOGIC_BACKEND_KIND,
-  DSLOGIC_PROVIDER_KIND,
   classifyDslogicCandidate,
   createDslogicBackendProbe,
   mapBackendProbeDiagnostics,
@@ -229,6 +227,12 @@ export class DslogicDeviceProvider implements DeviceProvider {
 
   async listConnectedDevices(): Promise<readonly DiscoveredDevice[]> {
     const snapshot = await this.listInventorySnapshot()
+    return snapshot.devices
+      .filter(isCompatibilityVisible)
+      .map(toDiscoveredDevice)
+  }
+}
+napshot()
     return snapshot.devices
       .filter(isCompatibilityVisible)
       .map(toDiscoveredDevice)

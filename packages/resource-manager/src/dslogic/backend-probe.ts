@@ -17,8 +17,6 @@ import {
   type DslogicNativeRuntimeState
 } from "./native-runtime.js"
 
-export const DSLOGIC_PROVIDER_KIND = "dslogic" as const
-export const DSLOGIC_BACKEND_KIND = "dsview-cli" as const
 const DEFAULT_HOST_USB_ENUMERATION_TIMEOUT_MS = 3_000
 const DEFAULT_HOST_USB_ENUMERATION_MAX_BUFFER_BYTES = 256 * 1024
 
@@ -441,6 +439,13 @@ export const createDslogicBackendProbe = (
 export { createDslogicNativeRuntime, resolveInventoryPlatform }
 export type {
   CreateDslogicNativeRuntimeOptions,
+  DslogicNativeHostMetadata,
+  DslogicNativeRuntime,
+  DslogicNativeRuntimeDiagnostic,
+  DslogicNativeRuntimeSnapshot,
+  DslogicNativeRuntimeState
+} from "./native-runtime.js"
+tions,
   DslogicNativeHostMetadata,
   DslogicNativeRuntime,
   DslogicNativeRuntimeDiagnostic,

@@ -69,28 +69,42 @@ PROJECT_FILES=(
   .gsd/KNOWLEDGE.md
 )
 
+SUPPORT_FILES=("${DOC_FILES[@]}")
+for candidate in "${PROJECT_FILES[@]}"; do
+  if [[ -f "$candidate" ]]; then
+    SUPPORT_FILES+=("$candidate")
+  fi
+done
+
 echo "[verify-m010-s05] stale support-story and alias guard"
 reject_pattern "command guard" "verify:m006" "${DOC_FILES[@]}"
 reject_pattern "command guard" "verify:m009" "${DOC_FILES[@]}"
 reject_pattern "script guard" "verify-m006" "${DOC_FILES[@]}"
 reject_pattern "script guard" "verify-m009" "${DOC_FILES[@]}"
+reject_pattern "backend wording guard" "sigrok-cli" "${DOC_FILES[@]}"
+reject_pattern "backend wording guard" "libsigrok" "${DOC_FILES[@]}"
+require_pattern "root alias" '"verify:s04": "bash scripts/verify-m010-s04.sh"' package.json
+require_pattern "root alias" '"verify:s05": "bash scripts/verify-m010-s05.sh"' package.json
+require_pattern "root alias" '"verify:m010:s03": "bash scripts/verify-m010-s03.sh"' package.json
+require_pattern "root alias" '"verify:m010:s04": "bash scripts/verify-m010-s04.sh"' package.json
 require_pattern "root alias" '"verify:m010:s05": "bash scripts/verify-m010-s05.sh"' package.json
-require_pattern "support seam" "bash scripts/verify-m010-s05.sh" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "support seam" "pnpm run verify:m010:s05" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "macos support claim" "macOS" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "macos support claim" "sigrok-cli" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "macos support claim" "live-proven" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "linux support claim" "Linux" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "windows support claim" "Windows" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "modeled support claim" "readiness-modeled" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "backend-missing-runtime" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "backend-runtime-timeout" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "backend-runtime-malformed-response" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "backend-unsupported-os" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "device-unsupported-variant" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
-require_pattern "diagnostic guard" "device-runtime-malformed-response" "${DOC_FILES[@]}" "${PROJECT_FILES[@]}"
+require_pattern "support seam" "bash scripts/verify-m010-s05.sh" "${SUPPORT_FILES[@]}"
+require_pattern "support seam" "pnpm run verify:m010:s05" "${SUPPORT_FILES[@]}"
+require_pattern "macos support claim" "macOS" "${SUPPORT_FILES[@]}"
+require_pattern "backend truth claim" "dsview-cli" "${SUPPORT_FILES[@]}"
+require_pattern "device truth claim" "DSLogic Plus" "${SUPPORT_FILES[@]}"
+require_pattern "macos support claim" "live-proven" "${SUPPORT_FILES[@]}"
+require_pattern "linux support claim" "Linux" "${SUPPORT_FILES[@]}"
+require_pattern "windows support claim" "Windows" "${SUPPORT_FILES[@]}"
+require_pattern "modeled support claim" "readiness-modeled" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "backend-missing-runtime" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "backend-runtime-timeout" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "backend-runtime-malformed-response" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "backend-unsupported-os" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "device-unsupported-variant" "${SUPPORT_FILES[@]}"
+require_pattern "diagnostic guard" "device-runtime-malformed-response" "${SUPPORT_FILES[@]}"
 
-run_layer "compose S04 proof" 240 bash scripts/verify-m010-s04.sh
+run_layer "compose S04 proof" 240 pnpm run verify:s04
 run_layer "resource-manager native runtime proof" 120 pnpm --filter @listenai/resource-manager exec vitest run ./src/dslogic/native-runtime.test.ts
 run_layer "resource-manager provider readiness proof" 120 pnpm --filter @listenai/resource-manager exec vitest run ./src/dslogic/dslogic-device-provider.test.ts
 run_layer "packaged generic skill proof" 120 pnpm --filter @listenai/skill-logic-analyzer exec vitest run src/generic-skill.test.ts

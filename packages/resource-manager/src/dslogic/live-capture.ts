@@ -14,10 +14,6 @@ import type {
 } from "@listenai/contracts";
 import type { LiveCaptureProvider } from "../device-provider.js";
 import {
-  DSLOGIC_BACKEND_KIND,
-  DSLOGIC_PROVIDER_KIND
-} from "./backend-probe.js";
-import {
   createDslogicNativeLiveCaptureBackend,
   type DslogicNativeCaptureFailure,
   type DslogicNativeCaptureStreamValue,
@@ -285,6 +281,12 @@ export const createDslogicNativeLiveCapture = (
 export const createLiveCaptureRequest = (
   session: LiveCaptureSession,
   overrides: Partial<Omit<LiveCaptureRequest, "session">> = {}
+): LiveCaptureRequest => ({
+  session,
+  requestedAt: overrides.requestedAt ?? session.startedAt,
+  timeoutMs: overrides.timeoutMs
+});
+des: Partial<Omit<LiveCaptureRequest, "session">> = {}
 ): LiveCaptureRequest => ({
   session,
   requestedAt: overrides.requestedAt ?? session.startedAt,

@@ -7,7 +7,7 @@ WORKTREE_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$WORKTREE_ROOT"
 
 echo "[verify-m010-s04] compose S03 proof"
-bash scripts/verify-m010-s03.sh
+pnpm run verify:m010:s03
 
 echo "[verify-m010-s04] packaged CLI and dashboard truth"
 pnpm exec vitest run \
