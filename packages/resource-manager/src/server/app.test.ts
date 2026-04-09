@@ -408,6 +408,10 @@ describe("Hono app routes", () => {
     expect(body).toContain('id="device-cards"');
     expect(body).toContain('src="/dashboard.js"');
     expect(body).toContain("/dashboard-snapshot");
+    expect(body).toContain("Waiting for first dsview-cli snapshot");
+    expect(body).toContain("authoritative dsview-cli dashboard snapshot");
+    expect(body).toContain("dsview-cli runtime unknown");
+    expect(body).not.toContain("libsigrok");
   });
 
   it("GET /dashboard.js serves the client script for overview-led system metrics", async () => {
@@ -431,6 +435,9 @@ describe("Hono app routes", () => {
     expect(body).toContain("Lease timing");
     expect(body).toContain("A fake provider or backend is serving this snapshot");
     expect(body).toContain("dsview-cli runtime readiness has not reported any probe results yet.");
+    expect(body).toContain("No dsview-cli runtime diagnostics reported.");
+    expect(body).toContain("dsview-cli runtime readiness unavailable.");
+    expect(body).not.toContain("libsigrok");
   });
 
   it("GET /favicon.ico returns 204 so the dashboard loads without failed requests", async () => {
@@ -689,6 +696,7 @@ describe("Hono app routes", () => {
     ]);
     expect(dashboardBody.backendReadiness).toEqual(mixedProviderInventory.backendReadiness);
     expect(dashboardBody.diagnostics).toEqual(mixedProviderInventory.diagnostics);
+    expect(JSON.stringify(dashboardBody)).not.toContain("libsigrok");
     expect(dashboardBody.overview).toEqual(
       expect.objectContaining({
         totalDevices: 2,

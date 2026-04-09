@@ -407,7 +407,7 @@ export function renderDashboardPage(): string {
           </div>
           <div class="hero-actions">
             <span class="signal" id="stream-status" data-state="reconnecting">Connecting live stream...</span>
-            <span class="pill" id="last-updated">Waiting for first snapshot</span>
+            <span class="pill" id="last-updated">Waiting for first dsview-cli snapshot</span>
             <button id="refresh-button" type="button">Refresh snapshot</button>
           </div>
         </div>
@@ -421,11 +421,11 @@ export function renderDashboardPage(): string {
             <span class="pill" id="system-status-pill" data-state="attention">Awaiting snapshot</span>
           </div>
           <p id="system-status-summary">
-            Waiting for the authoritative dashboard snapshot from <code>/dashboard-snapshot</code>.
+            Waiting for the authoritative dsview-cli dashboard snapshot from <code>/dashboard-snapshot</code>.
           </p>
           <div class="status-meta">
             <span class="pill" id="provider-summary">Provider unknown</span>
-            <span class="pill" id="backend-summary">Runtime unknown</span>
+            <span class="pill" id="backend-summary">dsview-cli runtime unknown</span>
           </div>
         </section>
 
