@@ -26,7 +26,7 @@ run_slice() {
 echo
 echo "######################################"
 echo "# M009 Milestone Verification"
-echo "# Clean libsigrok migration proof"
+echo "# Legacy alias over current DSLogic seams"
 echo "######################################"
 
 # S01 verification script doesn't exist yet, skip it
@@ -52,7 +52,7 @@ run_slice \
 
 run_slice \
   "S05" \
-  "Assembled macOS libsigrok proof" \
+  "Assembled macOS DSLogic proof" \
   "$ROOT_DIR/scripts/verify-m009-s05.sh"
 
 echo
@@ -60,7 +60,7 @@ echo "######################################"
 echo "# M009 Milestone Verification: PASSED"
 echo "######################################"
 echo
-echo "The clean libsigrok migration works from the shipped runtime seam"
-echo "and preserves the M008 control-plane baseline with macOS as the"
-echo "first live-proven host."
+echo "The legacy M009 verification entrypoints now delegate to the"
+echo "current DSLogic acceptance seams so stale legacy backend wording"
+echo "does not drift back into operator-facing verification output."
 echo

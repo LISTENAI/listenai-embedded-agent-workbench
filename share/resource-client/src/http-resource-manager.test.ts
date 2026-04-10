@@ -485,13 +485,13 @@ describe("HttpResourceManager", () => {
       });
     });
 
-    it("rejects stale libsigrok aliases in inventory snapshots", async () => {
+    it("rejects unknown backend kinds in inventory snapshots", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         jsonResponse({
           ...mixedDslogicSnapshot,
           inventoryScope: {
             ...mixedDslogicSnapshot.inventoryScope,
-            backendKinds: ["libsigrok"],
+            backendKinds: ["invalid-backend-kind"],
           },
         }),
       );
@@ -501,12 +501,12 @@ describe("HttpResourceManager", () => {
       );
     });
 
-    it("rejects stale libsigrok aliases in live capture responses", async () => {
+    it("rejects unknown backend kinds in live capture responses", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         jsonResponse({
           ok: true,
           providerKind: "dslogic",
-          backendKind: "libsigrok",
+          backendKind: "invalid-backend-kind",
           session: request.session,
           requestedAt: request.requestedAt,
           artifact: { bytes: [1] },

@@ -8,7 +8,7 @@ ListenAI Agent Skills 是一个 pnpm workspace，用来组合一个可运行的 
 
 当前仓库对使用者暴露四个主要 package surface：
 
-- `@listenai/resource-manager` - 启动 HTTP 服务、提供 dashboard、暴露 inventory 与 lease API，并承载 DSLogic 的 `libsigrok` 运行时边界。
+- `@listenai/resource-manager` - 启动 HTTP 服务、提供 dashboard、暴露 inventory 与 lease API，并承载 DSLogic 的 `dsview-cli` 运行时边界。
 - `@listenai/resource-client` - 提供 `HttpResourceManager` client，供脚本、宿主程序或其他 package 通过 HTTP 调用 manager。
 - `@listenai/skill-logic-analyzer` - 提供 logic-analyzer skill 的打包运行时表面，支持离线 artifact 分析和 live capture 工作流。
 - `@listenai/contracts` - 提供 service、client 和 skill package 之间共用的请求/结果与 inventory contracts。
@@ -132,19 +132,19 @@ const result = await runGenericLogicAnalyzer(resourceManager, request);
 
 ## 使用者应运行哪些验证命令
 
-如果你想从仓库根目录确认用户路径仍然可用，请运行：
+如果你想从仓库根目录确认打包后的用户路径仍与当前 M010 支持说明一致，请运行：
 
 ```bash
-pnpm run verify:m009:s04
-pnpm run verify:m009:s05
-pnpm run verify:m009
+bash scripts/verify-m010-s05.sh
+pnpm run verify:m010:s05
 ```
 
 这些命令分别证明：
 
-- `verify:m009:s04` - dashboard、browser 路径和 operator-facing docs 仍与 `libsigrok` 运行时语义一致
-- `verify:m009:s05` - assembled 的 resource-manager 与 logic-analyzer HTTP 路径端到端可用
-- `verify:m009` - 完整的 M009 验证链在仓库根目录通过
+- `bash scripts/verify-m010-s05.sh` - 分层支持说明 gate 会拒绝过期的 M006/M009 表述，并重新检查 M010 acceptance seam
+- `pnpm run verify:m010:s05` - 仓库根目录暴露的同名校验入口仍正确连到这条 acceptance seam
+
+当前 M010 支持约束是明确的：只有 macOS + `dsview-cli` 是 `live-proven` 的宿主路径，而且只有经典 DSLogic Plus 变体会在这条路径上被视为 `ready`。Linux 和 Windows 仍属于 `readiness-modeled` 的后续路径；这些平台当前应暴露的 truth surface 仍包括 `backend-missing-runtime`、`backend-runtime-timeout`、`backend-runtime-malformed-response`、`backend-unsupported-os`、`device-unsupported-variant` 和 `device-runtime-malformed-response` 这类诊断，而不是提前声称 capture 已经 ready。
 
 ## 如果你是来参与开发的
 

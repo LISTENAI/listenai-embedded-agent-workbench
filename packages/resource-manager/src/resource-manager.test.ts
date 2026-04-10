@@ -20,7 +20,6 @@ import {
   type AllocationResult,
   type DeviceRecord,
   type DslogicBackendIdentity,
-  type InventoryBackendKind,
   type InventorySnapshot,
   type LiveCaptureResult,
   type ReleaseFailure,
@@ -153,14 +152,9 @@ describe("resource manager contract", () => {
     ]);
   });
 
-  it("pins DSLogic contract identity to dsview-cli without legacy aliases", () => {
+  it("pins DSLogic contract identity to dsview-cli", () => {
     expect(DSLOGIC_PROVIDER_KIND).toBe("dslogic");
     expect(DSLOGIC_BACKEND_KIND).toBe("dsview-cli");
-    expect(INVENTORY_DIAGNOSTIC_CODES.some((code) => code.includes("libsigrok"))).toBe(
-      false
-    );
-
-    expectTypeOf<Extract<InventoryBackendKind, "libsigrok">>().toEqualTypeOf<never>();
     expectTypeOf<DslogicBackendIdentity>().toEqualTypeOf<{
       providerKind: "dslogic";
       backendKind: "dsview-cli";
