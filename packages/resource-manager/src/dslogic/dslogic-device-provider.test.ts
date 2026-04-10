@@ -77,6 +77,54 @@ describe("DslogicDeviceProvider", () => {
     ])
   })
 
+  it("treats dsview-cli runtime-listed classic hardware as ready even without USB ids", async () => {
+    const provider = new DslogicDeviceProvider({
+      probe: new FakeDslogicBackendProbe(
+        createDslogicProbeSnapshot({
+          checkedAt: refreshedAt,
+          platform: "linux",
+          devices: [
+            {
+              deviceId: "dslogic-plus",
+              label: "DSLogic Plus",
+              lastSeenAt: refreshedAt,
+              capabilityType: "logic-analyzer",
+              usbVendorId: null,
+              usbProductId: null,
+              model: "dslogic-plus",
+              modelDisplayName: "DSLogic Plus",
+              variantHint: "classic"
+            }
+          ]
+        })
+      )
+    })
+
+    await expect(provider.listInventorySnapshot()).resolves.toMatchObject({
+      devices: [
+        {
+          deviceId: "dslogic-plus",
+          readiness: "ready",
+          dslogic: {
+            model: "dslogic-plus",
+            modelDisplayName: "DSLogic Plus",
+            variant: "classic",
+            usbVendorId: null,
+            usbProductId: null
+          }
+        }
+      ]
+    })
+    await expect(provider.listConnectedDevices()).resolves.toEqual([
+      {
+        deviceId: "dslogic-plus",
+        label: "DSLogic Plus",
+        capabilityType: "logic-analyzer",
+        lastSeenAt: refreshedAt
+      }
+    ])
+  })
+
   it("keeps backend-missing snapshots visible without fabricating ready devices", async () => {
     const provider = new DslogicDeviceProvider({
       probe: new FakeDslogicBackendProbe(

@@ -6,6 +6,7 @@ import { InMemoryResourceManager } from "./resource-manager.js"
 import { createServer } from "./server/server.js"
 import { LeaseManager } from "./server/lease-manager.js"
 import { createDeviceProvider } from "./dslogic/provider-factory.js"
+import { createDefaultDslogicNativeLiveCaptureBackend } from "./dslogic/native-runtime.js"
 
 const parseFakeInventorySnapshot = (): InventorySnapshot | undefined => {
   const rawSnapshot = process.env.RESOURCE_MANAGER_FAKE_INVENTORY_SNAPSHOT
@@ -77,7 +78,14 @@ async function main() {
     "leaseScanIntervalMs"
   )
 
-  const provider = createDeviceProvider({ providerKind, fakeInventory })
+  const provider = createDeviceProvider({
+    providerKind,
+    fakeInventory,
+    dslogic:
+      providerKind === "dslogic"
+        ? { liveCaptureRunner: createDefaultDslogicNativeLiveCaptureBackend() }
+        : undefined
+  })
   const manager = new InMemoryResourceManager(provider)
   const leaseManager = new LeaseManager()
 

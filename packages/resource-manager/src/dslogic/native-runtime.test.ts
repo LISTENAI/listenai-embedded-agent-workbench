@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
+import type { LiveCaptureRequest } from "@listenai/contracts"
 import {
+  createDefaultDslogicNativeLiveCaptureBackend,
   createDslogicNativeRuntime,
   type DslogicNativeCommandResult,
   type DslogicNativeCommandRunner
@@ -34,6 +36,44 @@ const createCommandRunner = (results: readonly DslogicNativeCommandResult[]) => 
 
   return { runner, calls }
 }
+
+const createCaptureRequest = (): LiveCaptureRequest => ({
+  session: {
+    sessionId: "session-1",
+    deviceId: "dslogic-plus",
+    ownerSkillId: "logic-analyzer",
+    startedAt: checkedAt,
+    device: {
+      deviceId: "dslogic-plus",
+      label: "DSLogic Plus",
+      capabilityType: "logic-analyzer",
+      connectionState: "connected",
+      allocationState: "allocated",
+      ownerSkillId: "logic-analyzer",
+      lastSeenAt: checkedAt,
+      updatedAt: checkedAt,
+      readiness: "ready",
+      diagnostics: [],
+      providerKind: "dslogic",
+      backendKind: "dsview-cli",
+      dslogic: {
+        family: "dslogic",
+        model: "dslogic-plus",
+        modelDisplayName: "DSLogic Plus",
+        variant: "classic",
+        usbVendorId: null,
+        usbProductId: null
+      }
+    },
+    sampling: {
+      sampleRateHz: 1_000_000,
+      captureDurationMs: 4,
+      channels: [{ channelId: "D0", label: "CLK" }]
+    }
+  },
+  requestedAt: checkedAt,
+  timeoutMs: 3_000
+})
 
 describe("native-runtime", () => {
   it("returns unsupported-os for hosts outside the modeled platform list", async () => {
@@ -340,5 +380,163 @@ describe("native-runtime", () => {
       ]
     })
     expect(calls).toHaveLength(1)
+  })
+
+  it("returns runtime-unavailable when the default capture backend cannot prepare dsview-cli", async () => {
+    const backend = createDefaultDslogicNativeLiveCaptureBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: {
+            platform: "linux",
+            os: "linux",
+            arch: "x64"
+          },
+          runtime: {
+            state: "missing",
+            libraryPath: null,
+            binaryPath: null,
+            version: null
+          },
+          devices: [],
+          diagnostics: [
+            {
+              code: "backend-missing-runtime",
+              message: "dsview-cli runtime is not available on linux.",
+              libraryPath: null,
+              binaryPath: null,
+              backendVersion: null
+            }
+          ]
+        })
+      }
+    })
+
+    await expect(backend.capture(createCaptureRequest())).resolves.toEqual({
+      ok: false,
+      kind: "runtime-unavailable",
+      phase: "prepare-runtime",
+      message: "dsview-cli runtime is not available on linux.",
+      backendVersion: null,
+      nativeCode: "backend-missing-runtime",
+      details: ["dsview-cli binary path could not be resolved."]
+    })
+  })
+
+  it("captures a VCD artifact through dsview-cli and cleans up temporary files", async () => {
+    const { runner, calls } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "sr: lib_main: Scan all connected hardware device.\n{\n  \"devices\": [\n    {\n      \"handle\": 1,\n      \"stable_id\": \"dslogic-plus\",\n      \"model\": \"DSLogic Plus\",\n      \"native_name\": \"DSLogic PLus\"\n    }\n  ]\n}\n",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "sr: lib_main: Start collect.\n{\n  \"selected_handle\": 1,\n  \"completion\": \"clean_success\",\n  \"artifacts\": {\n    \"vcd_path\": \"/tmp/dslogic-capture-test/dslogic-plus.vcd\",\n    \"metadata_path\": \"/tmp/dslogic-capture-test/dslogic-plus.json\"\n  }\n}\n",
+        stderr: ""
+      }
+    ])
+    const removedTempDirs: string[] = []
+    const backend = createDefaultDslogicNativeLiveCaptureBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: {
+            platform: "linux",
+            os: "linux",
+            arch: "x64"
+          },
+          runtime: {
+            state: "ready",
+            libraryPath: "/usr/bin/dsview-cli",
+            binaryPath: "/usr/bin/dsview-cli",
+            version: "1.0.3"
+          },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner,
+      createTempDir: async () => "/tmp/dslogic-capture-test",
+      removeTempDir: async (path) => {
+        removedTempDirs.push(path)
+      },
+      readTextFile: async (path) => {
+        if (path.endsWith(".vcd")) {
+          return "$date\n  2026-04-02T04:00:00.000Z\n$end\n#0\n1!\n"
+        }
+
+        if (path.endsWith(".json")) {
+          return JSON.stringify({
+            tool: {
+              version: "v1.0.3"
+            },
+            capture: {
+              timestamp_utc: "2026-04-02T04:00:01.000Z",
+              sample_rate_hz: 1_000_000,
+              actual_sample_count: 256,
+              requested_sample_limit: 4_000
+            }
+          })
+        }
+
+        throw new Error(`Unexpected read path: ${path}`)
+      }
+    })
+
+    await expect(backend.capture(createCaptureRequest())).resolves.toEqual({
+      ok: true,
+      backendVersion: "v1.0.3",
+      diagnosticOutput: {
+        text: "sr: lib_main: Start collect.\n{\n  \"selected_handle\": 1,\n  \"completion\": \"clean_success\",\n  \"artifacts\": {\n    \"vcd_path\": \"/tmp/dslogic-capture-test/dslogic-plus.vcd\",\n    \"metadata_path\": \"/tmp/dslogic-capture-test/dslogic-plus.json\"\n  }\n}\n"
+      },
+      artifact: {
+        sourceName: "dslogic-plus.vcd",
+        formatHint: "dsview-vcd",
+        mediaType: "text/x-vcd",
+        capturedAt: "2026-04-02T04:00:01.000Z",
+        sampling: {
+          sampleRateHz: 1_000_000,
+          totalSamples: 256,
+          requestedSampleLimit: 4_000
+        },
+        text: "$date\n  2026-04-02T04:00:00.000Z\n$end\n#0\n1!\n"
+      }
+    })
+    expect(calls).toEqual([
+      {
+        command: "/usr/bin/dsview-cli",
+        args: ["devices", "list", "--format", "json"],
+        timeoutMs: 3_000,
+        maxBufferBytes: 512 * 1024
+      },
+      {
+        command: "/usr/bin/dsview-cli",
+        args: [
+          "capture",
+          "--format",
+          "json",
+          "--handle",
+          "1",
+          "--sample-rate-hz",
+          "1000000",
+          "--sample-limit",
+          "4000",
+          "--channels",
+          "0",
+          "--output",
+          "/tmp/dslogic-capture-test/dslogic-plus.vcd",
+          "--metadata-output",
+          "/tmp/dslogic-capture-test/dslogic-plus.json",
+          "--wait-timeout-ms",
+          "3000",
+          "--poll-interval-ms",
+          "50"
+        ],
+        timeoutMs: 3_000,
+        maxBufferBytes: 512 * 1024
+      }
+    ])
+    expect(removedTempDirs).toEqual(["/tmp/dslogic-capture-test"])
   })
 })

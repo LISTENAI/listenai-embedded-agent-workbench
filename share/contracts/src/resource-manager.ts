@@ -52,11 +52,18 @@ export interface LiveCaptureSession {
   sampling: LiveCaptureSamplingConfig;
 }
 
+export interface LiveCaptureArtifactSampling {
+  sampleRateHz?: number;
+  totalSamples?: number;
+  requestedSampleLimit?: number;
+}
+
 export interface LiveCaptureArtifact {
   sourceName?: string;
   formatHint?: string;
   mediaType?: string;
   capturedAt?: string;
+  sampling?: LiveCaptureArtifactSampling;
   text?: string;
   bytes?: Uint8Array;
 }

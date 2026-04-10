@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   createDslogicBackendProbe,
   mapBackendProbeDiagnostics,
+  parseDsviewDeviceList,
   parseMacosUsbDevices,
   type CreateDslogicBackendProbeOptions
 } from "./backend-probe.js"
@@ -40,6 +41,19 @@ const macosUsbSnapshot = JSON.stringify(
   2
 )
 
+const dsviewDevicesListOutput = `sr: lib_main: Scan all connected hardware device.
+{
+  "devices": [
+    {
+      "handle": 1,
+      "stable_id": "dslogic-plus",
+      "model": "DSLogic Plus",
+      "native_name": "DSLogic PLus"
+    }
+  ]
+}
+sr: lib_main: Uninit libsigrok.`
+
 describe("backend-probe", () => {
   it("parses DSLogic-class USB devices from macOS system_profiler output", () => {
     expect(parseMacosUsbDevices(macosUsbSnapshot, checkedAt)).toEqual([
@@ -64,6 +78,89 @@ describe("backend-probe", () => {
         model: "dslogic-plus",
         modelDisplayName: "DSLogic V421/Pango",
         variantHint: null
+      }
+    ])
+  })
+
+  it("parses dsview-cli devices list output on non-mac hosts", () => {
+    expect(parseDsviewDeviceList(dsviewDevicesListOutput, checkedAt)).toEqual([
+      {
+        deviceId: "dslogic-plus",
+        label: "DSLogic Plus",
+        lastSeenAt: checkedAt,
+        capabilityType: "logic-analyzer",
+        usbVendorId: null,
+        usbProductId: null,
+        model: "dslogic-plus",
+        modelDisplayName: "DSLogic Plus",
+        variantHint: "classic"
+      }
+    ])
+  })
+
+  it("maps dsview-cli runtime metadata into the backend probe snapshot and layers linux runtime discovery", async () => {
+    const probeRuntime: NonNullable<CreateDslogicBackendProbeOptions["probeRuntime"]> = async (
+      host
+    ) => ({
+      runtime: {
+        state: "ready",
+        libraryPath: host.platform === "linux" ? "/home/test/.local/bin/dsview-cli" : null,
+        binaryPath: host.platform === "linux" ? "/home/test/.local/bin/dsview-cli" : null,
+        version: "1.0.3"
+      },
+      devices: [],
+      diagnostics: []
+    })
+
+    const commands: Array<{ command: string; args: readonly string[] }> = []
+    const probe = createDslogicBackendProbe({
+      now: () => checkedAt,
+      getHostPlatform: () => "linux",
+      getHostArch: () => "x64",
+      probeRuntime,
+      executeCommand: async (command, args) => {
+        commands.push({ command, args: [...args] })
+        return {
+          ok: true,
+          stdout: dsviewDevicesListOutput,
+          stderr: ""
+        }
+      }
+    })
+
+    await expect(probe.probeInventory()).resolves.toEqual({
+      platform: "linux",
+      checkedAt,
+      host: {
+        platform: "linux",
+        os: "linux",
+        arch: "x64"
+      },
+      backend: {
+        state: "ready",
+        libraryPath: "/home/test/.local/bin/dsview-cli",
+        binaryPath: "/home/test/.local/bin/dsview-cli",
+        version: "1.0.3"
+      },
+      devices: [
+        {
+          deviceId: "dslogic-plus",
+          label: "DSLogic Plus",
+          lastSeenAt: checkedAt,
+          capabilityType: "logic-analyzer",
+          usbVendorId: null,
+          usbProductId: null,
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic Plus",
+          variantHint: "classic"
+        }
+      ],
+      diagnostics: []
+    })
+    expect(commands).toEqual([
+      {
+        command: "/home/test/.local/bin/dsview-cli",
+        args: ["devices", "list"]
       }
     ])
   })

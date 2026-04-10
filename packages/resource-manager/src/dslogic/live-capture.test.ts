@@ -184,6 +184,11 @@ describe("DSLogic live capture seam", () => {
         formatHint: "dsview-vcd",
         mediaType: "text/x-vcd",
         capturedAt: "2026-03-30T10:00:06.000Z",
+        sampling: {
+          sampleRateHz: 1_000_000,
+          totalSamples: 4,
+          requestedSampleLimit: 4
+        },
         text: artifactText
       }
     }));
@@ -201,6 +206,11 @@ describe("DSLogic live capture seam", () => {
         formatHint: "dsview-vcd",
         mediaType: "text/x-vcd",
         capturedAt: "2026-03-30T10:00:06.000Z",
+        sampling: {
+          sampleRateHz: 1_000_000,
+          totalSamples: 4,
+          requestedSampleLimit: 4
+        },
         text: artifactText
       },
       artifactSummary: {

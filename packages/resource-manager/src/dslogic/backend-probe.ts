@@ -20,6 +20,9 @@ import {
 
 const DEFAULT_HOST_USB_ENUMERATION_TIMEOUT_MS = 3_000
 const DEFAULT_HOST_USB_ENUMERATION_MAX_BUFFER_BYTES = 256 * 1024
+const DEFAULT_RUNTIME_DEVICE_ENUMERATION_TIMEOUT_MS = 3_000
+const DEFAULT_RUNTIME_DEVICE_ENUMERATION_MAX_BUFFER_BYTES = 256 * 1024
+const DEFAULT_DSVIEW_CLI_PATH = "dsview-cli"
 
 export type DslogicProbeBackendState = DslogicNativeRuntimeState
 
@@ -123,6 +126,32 @@ const buildUsbDeviceId = (
   return parts.join(":") || "dslogic-device"
 }
 
+const slugifyToken = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  return normalized.length > 0 ? normalized : null
+}
+
+const extractJsonObject = (output: string): string | null => {
+  const start = output.indexOf("{")
+  const end = output.lastIndexOf("}")
+
+  if (start < 0 || end <= start) {
+    return null
+  }
+
+  return output.slice(start, end + 1)
+}
+
+const hasClassicDslogicSignal = (...values: Array<string | null | undefined>): boolean =>
+  values.some((value) => typeof value === "string" && /dslogic\s*plus/i.test(value) && !/v421|pango/i.test(value))
+
+const hasPangoDslogicSignal = (...values: Array<string | null | undefined>): boolean =>
+  values.some((value) => typeof value === "string" && /v421|pango/i.test(value))
+
 export const parseMacosUsbDevices = (
   output: string,
   detectedAt: string
@@ -191,6 +220,90 @@ export const parseMacosUsbDevices = (
   }
 
   visit(roots)
+  return devices
+}
+
+export const parseDsviewDeviceList = (
+  output: string,
+  detectedAt: string
+): DslogicProbeDeviceCandidate[] => {
+  const payloadText = extractJsonObject(output)
+  if (!payloadText) {
+    return []
+  }
+
+  const payload = JSON.parse(payloadText) as unknown
+  const deviceEntries =
+    isJsonRecord(payload) && Array.isArray(payload.devices)
+      ? payload.devices
+      : []
+  const devices: DslogicProbeDeviceCandidate[] = []
+  const seenDeviceIds = new Set<string>()
+  const stableIdCounts = new Map<string, number>()
+
+  for (const entry of deviceEntries) {
+    if (!isJsonRecord(entry)) {
+      continue
+    }
+
+    const stableId = readRecordString(entry.stable_id ?? entry.stableId)
+    const modelText = readRecordString(entry.model)
+    const nativeName = readRecordString(entry.native_name ?? entry.nativeName)
+    const label = modelText ?? nativeName ?? stableId ?? "DSLogic device"
+    const looksLikeDslogic = [stableId, modelText, nativeName, label].some(
+      (value) => typeof value === "string" && /dslogic/i.test(value)
+    )
+
+    if (!looksLikeDslogic) {
+      continue
+    }
+
+    const handle =
+      typeof entry.handle === "number" || typeof entry.handle === "string"
+        ? String(entry.handle)
+        : null
+
+    let model: string | null = null
+    let modelDisplayName = modelText ?? nativeName ?? label
+    let variantHint: string | null = stableId?.toLowerCase() ?? null
+
+    if (hasPangoDslogicSignal(stableId, modelText, nativeName)) {
+      model = "dslogic-plus"
+      modelDisplayName = "DSLogic V421/Pango"
+      variantHint = "v421-pango"
+    } else if (hasClassicDslogicSignal(stableId, modelText, nativeName)) {
+      model = "dslogic-plus"
+      modelDisplayName = "DSLogic Plus"
+      variantHint = "classic"
+    }
+
+    const baseId =
+      slugifyToken(stableId) ??
+      (handle ? `dsview-handle-${handle}` : null) ??
+      slugifyToken(modelDisplayName) ??
+      "dslogic-device"
+    const duplicateCount = (stableIdCounts.get(baseId) ?? 0) + 1
+    stableIdCounts.set(baseId, duplicateCount)
+    const deviceId = duplicateCount === 1 ? baseId : `${baseId}:${duplicateCount}`
+
+    if (seenDeviceIds.has(deviceId)) {
+      continue
+    }
+
+    seenDeviceIds.add(deviceId)
+    devices.push({
+      deviceId,
+      label,
+      lastSeenAt: detectedAt,
+      capabilityType: "logic-analyzer",
+      usbVendorId: null,
+      usbProductId: null,
+      model,
+      modelDisplayName,
+      variantHint
+    })
+  }
+
   return devices
 }
 
@@ -273,6 +386,13 @@ export const classifyDslogicCandidate = (
   const model = candidate.model ?? "dslogic-plus"
   const fallbackLabel = candidate.label.trim().length > 0 ? candidate.label : "DSLogic device"
   const modelDisplayName = candidate.modelDisplayName ?? fallbackLabel
+  const normalizedVariantHint = normalizeUsbIdentifier(candidate.variantHint)
+  const hasClassicHint =
+    normalizedVariantHint === "classic" ||
+    hasClassicDslogicSignal(candidate.label, candidate.modelDisplayName, candidate.model)
+  const hasPangoHint =
+    normalizedVariantHint === "v421-pango" ||
+    hasPangoDslogicSignal(candidate.label, candidate.modelDisplayName, candidate.model, candidate.variantHint)
 
   const baseIdentity: DslogicDeviceIdentity = {
     family: "dslogic",
@@ -283,20 +403,7 @@ export const classifyDslogicCandidate = (
     usbProductId
   }
 
-  if (usbVendorId === "2a0e" && usbProductId === "0001") {
-    return {
-      identity: {
-        ...baseIdentity,
-        model: "dslogic-plus",
-        modelDisplayName: candidate.modelDisplayName ?? "DSLogic Plus",
-        variant: "classic"
-      },
-      readiness: "ready",
-      diagnostics: []
-    }
-  }
-
-  if (usbVendorId === "2a0e" && usbProductId === "0030") {
+  if ((usbVendorId === "2a0e" && usbProductId === "0030") || hasPangoHint) {
     return {
       identity: {
         ...baseIdentity,
@@ -318,7 +425,20 @@ export const classifyDslogicCandidate = (
     }
   }
 
-  const unknownVariant = [usbVendorId, usbProductId].filter(Boolean).join(":") || "missing-usb-id"
+  if ((usbVendorId === "2a0e" && usbProductId === "0001") || hasClassicHint) {
+    return {
+      identity: {
+        ...baseIdentity,
+        model: "dslogic-plus",
+        modelDisplayName: candidate.modelDisplayName ?? "DSLogic Plus",
+        variant: "classic"
+      },
+      readiness: "ready",
+      diagnostics: []
+    }
+  }
+
+  const unknownVariant = [usbVendorId, usbProductId].filter(Boolean).join(":") || normalizedVariantHint || "missing-usb-id"
 
   return {
     identity: {
@@ -379,16 +499,43 @@ const createDefaultHostDeviceEnumerator = (options: {
   executeCommand: DslogicNativeCommandRunner
 }): NonNullable<CreateDslogicBackendProbeOptions["enumerateHostDevices"]> =>
   async (snapshot) => {
-    if (snapshot.host.platform !== "macos") {
+    if (snapshot.host.platform === "macos") {
+      const result = await options.executeCommand(
+        "system_profiler",
+        ["SPUSBDataType", "-json"],
+        {
+          timeoutMs: DEFAULT_HOST_USB_ENUMERATION_TIMEOUT_MS,
+          maxBufferBytes: DEFAULT_HOST_USB_ENUMERATION_MAX_BUFFER_BYTES
+        }
+      )
+
+      if (!result.ok) {
+        return []
+      }
+
+      const output = result.stdout.trim().length > 0 ? result.stdout : result.stderr
+      if (output.trim().length === 0) {
+        return []
+      }
+
+      try {
+        return parseMacosUsbDevices(output, snapshot.checkedAt)
+      } catch {
+        return []
+      }
+    }
+
+    if (snapshot.runtime.state !== "ready") {
       return []
     }
 
+    const dsviewCliPath = snapshot.runtime.binaryPath ?? snapshot.runtime.libraryPath ?? DEFAULT_DSVIEW_CLI_PATH
     const result = await options.executeCommand(
-      "system_profiler",
-      ["SPUSBDataType", "-json"],
+      dsviewCliPath,
+      ["devices", "list"],
       {
-        timeoutMs: DEFAULT_HOST_USB_ENUMERATION_TIMEOUT_MS,
-        maxBufferBytes: DEFAULT_HOST_USB_ENUMERATION_MAX_BUFFER_BYTES
+        timeoutMs: DEFAULT_RUNTIME_DEVICE_ENUMERATION_TIMEOUT_MS,
+        maxBufferBytes: DEFAULT_RUNTIME_DEVICE_ENUMERATION_MAX_BUFFER_BYTES
       }
     )
 
@@ -396,13 +543,15 @@ const createDefaultHostDeviceEnumerator = (options: {
       return []
     }
 
-    const output = result.stdout.trim().length > 0 ? result.stdout : result.stderr
+    const output = [result.stdout, result.stderr]
+      .filter((chunk) => chunk.trim().length > 0)
+      .join("\n")
     if (output.trim().length === 0) {
       return []
     }
 
     try {
-      return parseMacosUsbDevices(output, snapshot.checkedAt)
+      return parseDsviewDeviceList(output, snapshot.checkedAt)
     } catch {
       return []
     }
