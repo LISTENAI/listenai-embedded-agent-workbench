@@ -1,8 +1,10 @@
-import type {
-  BackendReadinessRecord,
-  DeviceRecord,
-  InventoryDiagnostic,
-  InventorySnapshot
+import {
+  DSLOGIC_BACKEND_KIND,
+  DSLOGIC_PROVIDER_KIND,
+  type BackendReadinessRecord,
+  type DeviceRecord,
+  type InventoryDiagnostic,
+  type InventorySnapshot
 } from "@listenai/contracts"
 import type {
   DeviceProvider,

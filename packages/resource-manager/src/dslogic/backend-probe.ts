@@ -1,9 +1,10 @@
-import type {
-  DeviceReadinessState,
-  DslogicDeviceIdentity,
-  InventoryDiagnostic,
-  InventoryDiagnosticCode,
-  InventoryPlatform
+import {
+  DSLOGIC_BACKEND_KIND,
+  type DeviceReadinessState,
+  type DslogicDeviceIdentity,
+  type InventoryDiagnostic,
+  type InventoryDiagnosticCode,
+  type InventoryPlatform
 } from "@listenai/contracts"
 import {
   createDslogicNativeRuntime,

@@ -1,16 +1,18 @@
-import type {
-  DeviceRecord,
-  LiveCaptureArtifact,
-  LiveCaptureArtifactSummary,
-  LiveCaptureFailure,
-  LiveCaptureFailureDiagnostics,
-  LiveCaptureFailureKind,
-  LiveCaptureFailurePhase,
-  LiveCaptureRequest,
-  LiveCaptureResult,
-  LiveCaptureSession,
-  LiveCaptureStreamSummary,
-  LiveCaptureSuccess
+import {
+  DSLOGIC_BACKEND_KIND,
+  DSLOGIC_PROVIDER_KIND,
+  type DeviceRecord,
+  type LiveCaptureArtifact,
+  type LiveCaptureArtifactSummary,
+  type LiveCaptureFailure,
+  type LiveCaptureFailureDiagnostics,
+  type LiveCaptureFailureKind,
+  type LiveCaptureFailurePhase,
+  type LiveCaptureRequest,
+  type LiveCaptureResult,
+  type LiveCaptureSession,
+  type LiveCaptureStreamSummary,
+  type LiveCaptureSuccess
 } from "@listenai/contracts";
 import type { LiveCaptureProvider } from "../device-provider.js";
 import {
