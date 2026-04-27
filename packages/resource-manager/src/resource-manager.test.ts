@@ -18,6 +18,8 @@ import {
   type AllocationFailure,
   type AllocationRequest,
   type AllocationResult,
+  type DeviceOptionsRequest,
+  type DeviceOptionsResult,
   type DeviceRecord,
   type DslogicBackendIdentity,
   type InventorySnapshot,
@@ -1107,6 +1109,359 @@ describe("in-memory resource manager", () => {
   });
 });
 
+
+
+describe("in-memory resource manager device-options dispatch", () => {
+  const refreshedAt = "2026-03-31T10:00:00.000Z";
+  const requestedAt = "2026-03-31T10:00:05.000Z";
+  const allocatedAt = "2026-03-31T10:00:06.000Z";
+
+  const createDslogicSnapshot = (): InventorySnapshot => ({
+    refreshedAt,
+    inventoryScope: {
+      providerKinds: ["dslogic"],
+      backendKinds: ["dsview-cli"]
+    },
+    devices: [
+      {
+        deviceId: "logic-1",
+        label: "DSLogic Plus",
+        capabilityType: "logic-analyzer",
+        connectionState: "connected",
+        allocationState: "free",
+        ownerSkillId: null,
+        lastSeenAt: refreshedAt,
+        updatedAt: refreshedAt,
+        readiness: "ready",
+        diagnostics: [],
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        dslogic: {
+          family: "dslogic",
+          model: "dslogic-plus",
+          modelDisplayName: "DSLogic Plus",
+          variant: "classic",
+          usbVendorId: "2a0e",
+          usbProductId: "0001"
+        }
+      }
+    ],
+    backendReadiness: [
+      {
+        platform: "macos",
+        backendKind: "dsview-cli",
+        readiness: "ready",
+        version: "1.2.2",
+        checkedAt: refreshedAt,
+        diagnostics: []
+      }
+    ],
+    diagnostics: []
+  });
+
+  const createOptionsRequest = (
+    snapshot: InventorySnapshot,
+    ownerSkillId = "skill-alpha"
+  ): DeviceOptionsRequest => ({
+    session: {
+      sessionId: "session-1",
+      deviceId: "logic-1",
+      ownerSkillId,
+      startedAt: refreshedAt,
+      device: {
+        ...snapshot.devices[0]!,
+        allocationState: "free",
+        ownerSkillId: null
+      },
+      sampling: {
+        sampleRateHz: 1_000_000,
+        captureDurationMs: 10,
+        channels: [
+          {
+            channelId: "D0",
+            label: "Channel 0"
+          }
+        ]
+      }
+    },
+    requestedAt
+  });
+
+  it("delegates options lookup through a provider-dispatched seam with the authoritative session device", async () => {
+    const snapshot = createDslogicSnapshot();
+    let capturedRequest = null as Parameters<SnapshotResourceManager["inspectDeviceOptions"]>[0] | null;
+    const provider: DeviceProvider = {
+      async listInventorySnapshot() {
+        return snapshot;
+      },
+      async listConnectedDevices() {
+        return [];
+      },
+      deviceOptions: {
+        supportsDevice(device: DeviceRecord) {
+          return device.providerKind === "dslogic" && device.backendKind === "dsview-cli";
+        },
+        async inspectDeviceOptions(
+          request: Parameters<SnapshotResourceManager["inspectDeviceOptions"]>[0]
+        ): Promise<DeviceOptionsResult> {
+          capturedRequest = request;
+          return {
+            ok: true,
+            providerKind: "dslogic",
+            backendKind: "dsview-cli",
+            session: request.session,
+            requestedAt: request.requestedAt,
+            capabilities: {
+              operations: [{ token: "collect", label: "Collect" }],
+              channels: [{ token: "D0", label: "Channel 0" }],
+              stopConditions: [{ token: "samples=1000" }],
+              filters: [{ token: "none" }],
+              thresholds: [{ token: "1.8v" }]
+            }
+          };
+        }
+      }
+    };
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request = createOptionsRequest(snapshot);
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    const result = await manager.inspectDeviceOptions(request);
+
+    expect(result).toMatchObject({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview-cli",
+      capabilities: {
+        operations: [{ token: "collect", label: "Collect" }]
+      }
+    });
+    expect(capturedRequest?.session.device.allocationState).toBe("allocated");
+    expect(capturedRequest?.session.device.ownerSkillId).toBe("skill-alpha");
+    expect(capturedRequest?.session.device.updatedAt).toBe(allocatedAt);
+  });
+
+  it("rejects unknown devices before dispatching to an options provider", async () => {
+    const snapshot = createDslogicSnapshot();
+    let dispatched = false;
+    const provider: DeviceProvider = {
+      async listInventorySnapshot() {
+        return snapshot;
+      },
+      async listConnectedDevices() {
+        return [];
+      },
+      deviceOptions: {
+        supportsDevice() {
+          return true;
+        },
+        async inspectDeviceOptions(): Promise<DeviceOptionsResult> {
+          dispatched = true;
+          throw new Error("unexpected dispatch");
+        }
+      }
+    };
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request: DeviceOptionsRequest = {
+      ...createOptionsRequest(snapshot),
+      session: {
+        ...createOptionsRequest(snapshot).session,
+        deviceId: "missing-logic",
+        device: {
+          ...snapshot.devices[0]!,
+          deviceId: "missing-logic"
+        }
+      }
+    };
+
+    await manager.refreshInventory();
+
+    await expect(manager.inspectDeviceOptions(request)).resolves.toMatchObject({
+      ok: false,
+      reason: "device-options-failed",
+      kind: "device-not-found",
+      diagnostics: {
+        phase: "validate-session",
+        providerKind: "dslogic",
+        backendKind: "dsview-cli"
+      }
+    });
+    expect(dispatched).toBe(false);
+  });
+
+  it("rejects wrong-owner options requests before dispatching to an options provider", async () => {
+    const snapshot = createDslogicSnapshot();
+    let dispatched = false;
+    const provider: DeviceProvider = {
+      async listInventorySnapshot() {
+        return snapshot;
+      },
+      async listConnectedDevices() {
+        return [];
+      },
+      deviceOptions: {
+        supportsDevice() {
+          return true;
+        },
+        async inspectDeviceOptions(): Promise<DeviceOptionsResult> {
+          dispatched = true;
+          throw new Error("unexpected dispatch");
+        }
+      }
+    };
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    await expect(manager.inspectDeviceOptions(createOptionsRequest(snapshot, "skill-beta"))).resolves.toMatchObject({
+      ok: false,
+      reason: "device-options-failed",
+      kind: "owner-mismatch",
+      diagnostics: {
+        phase: "validate-session",
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        details: [
+          "Authoritative owner is skill-alpha.",
+          "Option inspection requests must use the currently allocated owner for the accepted session."
+        ]
+      }
+    });
+    expect(dispatched).toBe(false);
+  });
+
+  it("returns an explicit unsupported-runtime failure for fake-provider options requests", async () => {
+    const snapshot: InventorySnapshot = {
+      refreshedAt,
+      inventoryScope: {
+        providerKinds: ["fake"],
+        backendKinds: ["fake"]
+      },
+      devices: [
+        {
+          deviceId: "fake-1",
+          label: "Fake logic analyzer",
+          capabilityType: "logic-analyzer",
+          connectionState: "connected",
+          allocationState: "free",
+          ownerSkillId: null,
+          lastSeenAt: refreshedAt,
+          updatedAt: refreshedAt,
+          readiness: "ready",
+          diagnostics: [],
+          providerKind: "fake",
+          backendKind: "fake",
+          dslogic: null
+        }
+      ],
+      backendReadiness: [],
+      diagnostics: []
+    };
+    const provider = new FakeDeviceProvider(snapshot);
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+    const request: DeviceOptionsRequest = {
+      ...createOptionsRequest(snapshot),
+      session: {
+        ...createOptionsRequest(snapshot).session,
+        sessionId: "session-fake-1",
+        deviceId: "fake-1",
+        device: {
+          ...snapshot.devices[0]!,
+          allocationState: "free",
+          ownerSkillId: null
+        }
+      }
+    };
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "fake-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    await expect(manager.inspectDeviceOptions(request)).resolves.toMatchObject({
+      ok: false,
+      reason: "device-options-failed",
+      kind: "unsupported-runtime",
+      message: "Device options are not supported by the fake provider/backend.",
+      diagnostics: {
+        phase: "validate-session",
+        providerKind: "fake",
+        backendKind: "fake",
+        details: [
+          "Fake provider inventory can drive allocation flows but does not implement device-options inspection.",
+          "Use the DSLogic provider/backend to exercise real device-options lookup."
+        ]
+      }
+    });
+  });
+
+  it("wraps thrown options-provider failures as typed diagnostics", async () => {
+    const snapshot = createDslogicSnapshot();
+    const provider: DeviceProvider = {
+      async listInventorySnapshot() {
+        return snapshot;
+      },
+      async listConnectedDevices() {
+        return [];
+      },
+      deviceOptions: {
+        supportsDevice(device: DeviceRecord) {
+          return device.providerKind === "dslogic" && device.backendKind === "dsview-cli";
+        },
+        async inspectDeviceOptions(): Promise<DeviceOptionsResult> {
+          throw new Error("native options command failed");
+        }
+      }
+    };
+    const manager = createResourceManager(provider, {
+      now: () => refreshedAt
+    });
+
+    await manager.refreshInventory();
+    await manager.allocateDevice({
+      deviceId: "logic-1",
+      ownerSkillId: "skill-alpha",
+      requestedAt: allocatedAt
+    });
+
+    await expect(manager.inspectDeviceOptions(createOptionsRequest(snapshot))).resolves.toMatchObject({
+      ok: false,
+      reason: "device-options-failed",
+      kind: "native-error",
+      message: "Device options provider failed while inspecting device logic-1.",
+      diagnostics: {
+        phase: "inspect-options",
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        details: [
+          "Device-options provider threw during inspection dispatch.",
+          "native options command failed"
+        ]
+      }
+    });
+  });
+});
 
 describe("in-memory resource manager live capture dispatch", () => {
   const refreshedAt = "2026-03-30T10:00:00.000Z";

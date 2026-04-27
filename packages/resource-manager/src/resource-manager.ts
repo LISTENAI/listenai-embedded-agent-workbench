@@ -19,11 +19,13 @@ import {
   type DslogicLiveCaptureRunner
 } from "./dslogic/live-capture.js";
 import type {
+  DeviceOptionsProvider,
   DeviceProviderInput,
   LiveCaptureProvider,
   RegisteredDeviceProvider
 } from "./device-provider.js";
 import {
+  isDeviceOptionsProvider,
   isLiveCaptureProvider,
   normalizeDeviceProviders
 } from "./device-provider.js";
@@ -56,7 +58,8 @@ const buildDeviceOptionsFailure = (
   kind: DeviceOptionsFailure["kind"],
   message: string,
   details: readonly string[],
-  device: DeviceRecord = request.session.device
+  device: DeviceRecord = request.session.device,
+  overrides: Partial<DeviceOptionsFailure["diagnostics"]> = {}
 ): DeviceOptionsFailure => ({
   ok: false,
   reason: "device-options-failed",
@@ -66,16 +69,16 @@ const buildDeviceOptionsFailure = (
   requestedAt: request.requestedAt,
   capabilities: null,
   diagnostics: {
-    phase: "validate-session",
-    providerKind: device.providerKind ?? null,
-    backendKind: device.backendKind ?? null,
-    backendVersion: null,
-    timeoutMs: request.timeoutMs ?? null,
-    nativeCode: null,
-    optionsOutput: null,
-    diagnosticOutput: null,
+    phase: overrides.phase ?? "validate-session",
+    providerKind: overrides.providerKind ?? device.providerKind ?? null,
+    backendKind: overrides.backendKind ?? device.backendKind ?? null,
+    backendVersion: overrides.backendVersion ?? null,
+    timeoutMs: overrides.timeoutMs ?? request.timeoutMs ?? null,
+    nativeCode: overrides.nativeCode ?? null,
+    optionsOutput: overrides.optionsOutput ?? null,
+    diagnosticOutput: overrides.diagnosticOutput ?? null,
     details,
-    diagnostics: device.diagnostics ?? []
+    diagnostics: overrides.diagnostics ?? device.diagnostics ?? []
   }
 });
 
@@ -130,6 +133,13 @@ const buildUnsupportedProviderFailure = (
     diagnostics: request.session.device.diagnostics ?? []
   }
 });
+
+const collectDeviceOptionsProviders = (
+  providers: readonly RegisteredDeviceProvider[]
+): readonly DeviceOptionsProvider[] =>
+  providers.flatMap(({ provider }) =>
+    isDeviceOptionsProvider(provider.deviceOptions) ? [provider.deviceOptions] : []
+  );
 
 const collectLiveCaptureProviders = (
   providers: readonly RegisteredDeviceProvider[],
@@ -278,6 +288,7 @@ const createDisconnectedAllocatedRecord = (
 export class InMemoryResourceManager implements SnapshotResourceManager {
   readonly #providers: readonly RegisteredDeviceProvider[];
   readonly #now: () => string;
+  readonly #deviceOptionsProviders: readonly DeviceOptionsProvider[];
   readonly #liveCaptureProviders: readonly LiveCaptureProvider[];
   readonly #allocations = new Map<string, AllocationStateSnapshot>();
   #snapshot: InventorySnapshot = cloneSnapshot(EMPTY_SNAPSHOT);
@@ -285,6 +296,7 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
   constructor(providers: DeviceProviderInput, options: ResourceManagerOptions = {}) {
     this.#providers = normalizeDeviceProviders(providers);
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#deviceOptionsProviders = collectDeviceOptionsProviders(this.#providers);
     this.#liveCaptureProviders = collectLiveCaptureProviders(
       this.#providers,
       options.liveCaptureRunner
@@ -503,23 +515,47 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
       );
     }
 
-    return buildDeviceOptionsFailure(
-      {
-        ...request,
-        session: {
-          ...request.session,
-          device: cloneRecord(authoritativeDevice)
-        }
-      },
-      "unsupported-runtime",
-      `Device options are not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
-      [
-        `No registered device-options provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
-        `No registered device-options provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
-        "Configure a provider-specific device-options handler for the authoritative device runtime."
-      ],
-      authoritativeDevice
+    const dispatchedRequest: DeviceOptionsRequest = {
+      ...request,
+      session: {
+        ...request.session,
+        device: cloneRecord(authoritativeDevice)
+      }
+    };
+    const deviceOptionsProvider = this.#deviceOptionsProviders.find((provider) =>
+      provider.supportsDevice(authoritativeDevice)
     );
+
+    if (!deviceOptionsProvider) {
+      return buildDeviceOptionsFailure(
+        dispatchedRequest,
+        "unsupported-runtime",
+        `Device options are not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+        [
+          `No registered device-options provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
+          `No registered device-options provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+          "Configure a provider-specific device-options handler for the authoritative device runtime."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    try {
+      return await deviceOptionsProvider.inspectDeviceOptions(dispatchedRequest);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return buildDeviceOptionsFailure(
+        dispatchedRequest,
+        "native-error",
+        `Device options provider failed while inspecting device ${request.session.deviceId}.`,
+        [
+          "Device-options provider threw during inspection dispatch.",
+          detail
+        ],
+        authoritativeDevice,
+        { phase: "inspect-options" }
+      );
+    }
   }
 
   async liveCapture(request: LiveCaptureRequest): Promise<LiveCaptureResult> {

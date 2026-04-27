@@ -1,5 +1,8 @@
 import type {
   BackendReadinessRecord,
+  DeviceOptionsFailure,
+  DeviceOptionsRequest,
+  DeviceOptionsResult,
   DeviceRecord,
   DslogicDeviceIdentity,
   InventoryDiagnostic,
@@ -9,6 +12,7 @@ import type {
   LiveCaptureResult
 } from "@listenai/contracts";
 import type {
+  DeviceOptionsProvider,
   DeviceProvider,
   DiscoveredDevice,
   LiveCaptureProvider
@@ -139,9 +143,36 @@ const isCompatibilityVisible = (record: DeviceRecord): boolean =>
   record.connectionState === "connected" &&
   (record.readiness === undefined || record.readiness === "ready");
 
-const supportsFakeLiveCapture = (
+const supportsFakeRuntime = (
   device: Pick<DeviceRecord, "providerKind" | "backendKind">
 ): boolean => device.providerKind === "fake" && device.backendKind === "fake";
+
+const buildUnsupportedFakeOptions = (
+  request: DeviceOptionsRequest
+): DeviceOptionsFailure => ({
+  ok: false,
+  reason: "device-options-failed",
+  kind: "unsupported-runtime",
+  message: "Device options are not supported by the fake provider/backend.",
+  session: request.session,
+  requestedAt: request.requestedAt,
+  capabilities: null,
+  diagnostics: {
+    phase: "validate-session",
+    providerKind: request.session.device.providerKind ?? null,
+    backendKind: request.session.device.backendKind ?? null,
+    backendVersion: null,
+    timeoutMs: request.timeoutMs ?? null,
+    nativeCode: null,
+    optionsOutput: null,
+    diagnosticOutput: null,
+    details: [
+      "Fake provider inventory can drive allocation flows but does not implement device-options inspection.",
+      "Use the DSLogic provider/backend to exercise real device-options lookup."
+    ],
+    diagnostics: request.session.device.diagnostics ?? []
+  }
+});
 
 const buildUnsupportedFakeCapture = (
   request: LiveCaptureRequest
@@ -170,14 +201,21 @@ const buildUnsupportedFakeCapture = (
   }
 });
 
+const fakeDeviceOptionsProvider: DeviceOptionsProvider = {
+  supportsDevice: supportsFakeRuntime,
+  inspectDeviceOptions: async (request): Promise<DeviceOptionsResult> =>
+    buildUnsupportedFakeOptions(request)
+};
+
 const fakeLiveCaptureProvider: LiveCaptureProvider = {
-  supportsDevice: supportsFakeLiveCapture,
+  supportsDevice: supportsFakeRuntime,
   liveCapture: async (request): Promise<LiveCaptureResult> =>
     buildUnsupportedFakeCapture(request)
 };
 
 export class FakeDeviceProvider implements DeviceProvider {
   #snapshot: InventorySnapshot;
+  readonly deviceOptions = fakeDeviceOptionsProvider;
   readonly liveCapture = fakeLiveCaptureProvider;
 
   constructor(initialState: readonly DiscoveredDevice[] | InventorySnapshot = []) {

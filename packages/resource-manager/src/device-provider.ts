@@ -1,4 +1,6 @@
 import type {
+  DeviceOptionsRequest,
+  DeviceOptionsResult,
   DeviceRecord,
   InventorySnapshot,
   LiveCaptureRequest,
@@ -17,9 +19,15 @@ export interface LiveCaptureProvider {
   liveCapture(request: LiveCaptureRequest): Promise<LiveCaptureResult>;
 }
 
+export interface DeviceOptionsProvider {
+  supportsDevice(device: DeviceRecord): boolean;
+  inspectDeviceOptions(request: DeviceOptionsRequest): Promise<DeviceOptionsResult>;
+}
+
 export interface DeviceProvider {
   listInventorySnapshot(): Promise<InventorySnapshot>;
   listConnectedDevices(): Promise<readonly DiscoveredDevice[]>;
+  deviceOptions?: DeviceOptionsProvider;
   liveCapture?: LiveCaptureProvider;
 }
 
@@ -70,6 +78,16 @@ export const isLiveCaptureProvider = (
   typeof value.supportsDevice === "function" &&
   "liveCapture" in value &&
   typeof value.liveCapture === "function";
+
+export const isDeviceOptionsProvider = (
+  value: DeviceProvider["deviceOptions"]
+): value is DeviceOptionsProvider =>
+  typeof value === "object" &&
+  value !== null &&
+  "supportsDevice" in value &&
+  typeof value.supportsDevice === "function" &&
+  "inspectDeviceOptions" in value &&
+  typeof value.inspectDeviceOptions === "function";
 
 export const normalizeDeviceProviders = (
   input: DeviceProviderInput
