@@ -91,6 +91,100 @@ export interface DslogicBackendIdentity {
   backendKind: typeof DSLOGIC_BACKEND_KIND;
 }
 
+export const DEVICE_OPTIONS_FAILURE_PHASES = [
+  "validate-session",
+  "prepare-runtime",
+  "list-handles",
+  "inspect-options",
+  "parse-options"
+] as const;
+export type DeviceOptionsFailurePhase =
+  (typeof DEVICE_OPTIONS_FAILURE_PHASES)[number];
+
+export const DEVICE_OPTIONS_FAILURE_KINDS = [
+  "device-not-found",
+  "device-not-allocated",
+  "owner-mismatch",
+  "unsupported-runtime",
+  "runtime-unavailable",
+  "native-error",
+  "timeout",
+  "malformed-output"
+] as const;
+export type DeviceOptionsFailureKind =
+  (typeof DEVICE_OPTIONS_FAILURE_KINDS)[number];
+
+export interface DeviceOptionTokenCapability {
+  token: string;
+  label?: string;
+  description?: string;
+}
+
+export interface DeviceOptionsCapabilities {
+  operations: readonly DeviceOptionTokenCapability[];
+  channels: readonly DeviceOptionTokenCapability[];
+  stopConditions: readonly DeviceOptionTokenCapability[];
+  filters: readonly DeviceOptionTokenCapability[];
+  thresholds: readonly DeviceOptionTokenCapability[];
+}
+
+export interface DeviceOptionsStreamSummary {
+  kind: "empty" | "text" | "bytes";
+  byteLength: number;
+  textLength: number | null;
+  preview: string | null;
+  truncated: boolean;
+}
+
+export interface DeviceOptionsFailureDiagnostics {
+  phase: DeviceOptionsFailurePhase;
+  providerKind: InventoryProviderKind | null;
+  backendKind: InventoryBackendKind | null;
+  backendVersion: string | null;
+  timeoutMs: number | null;
+  nativeCode: string | null;
+  optionsOutput: DeviceOptionsStreamSummary | null;
+  diagnosticOutput: DeviceOptionsStreamSummary | null;
+  details: readonly string[];
+  diagnostics: readonly InventoryDiagnostic[];
+}
+
+export interface DeviceOptionsRequest {
+  session: LiveCaptureSession;
+  requestedAt: string;
+  timeoutMs?: number;
+}
+
+export interface DeviceOptionsSuccess {
+  ok: true;
+  providerKind: InventoryProviderKind;
+  backendKind: InventoryBackendKind;
+  session: LiveCaptureSession;
+  requestedAt: string;
+  capabilities: DeviceOptionsCapabilities;
+}
+
+export interface DeviceOptionsFailure {
+  ok: false;
+  reason: "device-options-failed";
+  kind: DeviceOptionsFailureKind;
+  message: string;
+  session: LiveCaptureSession;
+  requestedAt: string;
+  capabilities: null;
+  diagnostics: DeviceOptionsFailureDiagnostics;
+}
+
+export type DeviceOptionsResult = DeviceOptionsSuccess | DeviceOptionsFailure;
+
+export interface LiveCaptureTuning {
+  operation?: string;
+  channel?: string;
+  stop?: string;
+  filter?: string;
+  threshold?: string;
+}
+
 export interface LiveCaptureFailureDiagnostics {
   phase: LiveCaptureFailurePhase;
   providerKind: InventoryProviderKind | null;
@@ -108,6 +202,7 @@ export interface LiveCaptureRequest {
   session: LiveCaptureSession;
   requestedAt: string;
   timeoutMs?: number;
+  captureTuning?: LiveCaptureTuning;
 }
 
 export interface LiveCaptureSuccess {
@@ -140,6 +235,7 @@ export interface ResourceManager {
   listDevices(): Promise<readonly DeviceRecord[]>;
   allocateDevice(request: AllocationRequest): Promise<AllocationResult>;
   releaseDevice(request: ReleaseRequest): Promise<ReleaseResult>;
+  inspectDeviceOptions(request: DeviceOptionsRequest): Promise<DeviceOptionsResult>;
   liveCapture(request: LiveCaptureRequest): Promise<LiveCaptureResult>;
 }
 

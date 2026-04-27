@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type {
   AllocationRequest,
   DashboardSnapshot,
+  DeviceOptionsRequest,
   HeartbeatRequest,
   LiveCaptureArtifact,
   LiveCaptureRequest,
@@ -323,6 +324,12 @@ export function createApp(
       await dashboardLiveUpdates.publish("device-released");
     }
     return c.json(result, result.ok ? 200 : 400);
+  });
+
+  app.post("/devices/options", async (c) => {
+    const body = await c.req.json<DeviceOptionsRequest>();
+    const result = await manager.inspectDeviceOptions(body);
+    return c.json(result, 200);
   });
 
   app.post("/capture/live", async (c) => {

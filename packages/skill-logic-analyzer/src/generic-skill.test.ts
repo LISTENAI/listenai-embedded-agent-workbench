@@ -1015,6 +1015,29 @@ describe("generic logic analyzer contract", () => {
           })
         };
       },
+      async inspectDeviceOptions(optionsRequest) {
+        return {
+          ok: false,
+          reason: "device-options-failed",
+          kind: "unsupported-runtime",
+          message: "unused",
+          session: optionsRequest.session,
+          requestedAt: optionsRequest.requestedAt,
+          capabilities: null,
+          diagnostics: {
+            phase: "validate-session",
+            providerKind: optionsRequest.session.device.providerKind ?? null,
+            backendKind: optionsRequest.session.device.backendKind ?? null,
+            backendVersion: null,
+            timeoutMs: optionsRequest.timeoutMs ?? null,
+            nativeCode: null,
+            optionsOutput: null,
+            diagnosticOutput: null,
+            details: [],
+            diagnostics: optionsRequest.session.device.diagnostics ?? []
+          }
+        };
+      },
       async liveCapture() {
         return {
           ok: true,

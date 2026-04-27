@@ -1,6 +1,9 @@
 import type {
   AllocationRequest,
   AllocationResult,
+  DeviceOptionsFailure,
+  DeviceOptionsRequest,
+  DeviceOptionsResult,
   DeviceRecord,
   InventoryDiagnostic,
   InventorySnapshot,
@@ -47,6 +50,34 @@ const EMPTY_SNAPSHOT: InventorySnapshot = {
   backendReadiness: [],
   diagnostics: []
 };
+
+const buildDeviceOptionsFailure = (
+  request: DeviceOptionsRequest,
+  kind: DeviceOptionsFailure["kind"],
+  message: string,
+  details: readonly string[],
+  device: DeviceRecord = request.session.device
+): DeviceOptionsFailure => ({
+  ok: false,
+  reason: "device-options-failed",
+  kind,
+  message,
+  session: request.session,
+  requestedAt: request.requestedAt,
+  capabilities: null,
+  diagnostics: {
+    phase: "validate-session",
+    providerKind: device.providerKind ?? null,
+    backendKind: device.backendKind ?? null,
+    backendVersion: null,
+    timeoutMs: request.timeoutMs ?? null,
+    nativeCode: null,
+    optionsOutput: null,
+    diagnosticOutput: null,
+    details,
+    diagnostics: device.diagnostics ?? []
+  }
+});
 
 const buildAuthoritativeSessionFailure = (
   request: LiveCaptureRequest,
@@ -430,6 +461,65 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
       ok: true,
       device: cloneRecord(releasedDevice)
     };
+  }
+
+  async inspectDeviceOptions(request: DeviceOptionsRequest): Promise<DeviceOptionsResult> {
+    const authoritativeDevice = this.#findStoredDevice(request.session.deviceId);
+    if (!authoritativeDevice) {
+      return buildDeviceOptionsFailure(
+        request,
+        "device-not-found",
+        `Cannot inspect options for unknown device ${request.session.deviceId}.`,
+        [
+          `Device ${request.session.deviceId} is not present in authoritative inventory.`,
+          "Option inspection requests must target a device that is still visible to the resource manager."
+        ]
+      );
+    }
+
+    if (authoritativeDevice.allocationState !== "allocated") {
+      return buildDeviceOptionsFailure(
+        request,
+        "device-not-allocated",
+        `Cannot inspect options for unallocated device ${request.session.deviceId}.`,
+        [
+          `Authoritative allocation state is ${authoritativeDevice.allocationState}.`,
+          "Option inspection requests must use an active allocated session."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    if (authoritativeDevice.ownerSkillId !== request.session.ownerSkillId) {
+      return buildDeviceOptionsFailure(
+        request,
+        "owner-mismatch",
+        `Cannot inspect options for device ${request.session.deviceId} as owner ${request.session.ownerSkillId}.`,
+        [
+          `Authoritative owner is ${authoritativeDevice.ownerSkillId ?? "unowned"}.`,
+          "Option inspection requests must use the currently allocated owner for the accepted session."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    return buildDeviceOptionsFailure(
+      {
+        ...request,
+        session: {
+          ...request.session,
+          device: cloneRecord(authoritativeDevice)
+        }
+      },
+      "unsupported-runtime",
+      `Device options are not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+      [
+        `No registered device-options provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
+        `No registered device-options provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+        "Configure a provider-specific device-options handler for the authoritative device runtime."
+      ],
+      authoritativeDevice
+    );
   }
 
   async liveCapture(request: LiveCaptureRequest): Promise<LiveCaptureResult> {

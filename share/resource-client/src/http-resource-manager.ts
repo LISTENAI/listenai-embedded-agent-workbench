@@ -3,6 +3,8 @@ import {
   BACKEND_READINESS_STATES,
   CONNECTION_STATES,
   DEVICE_READINESS_STATES,
+  DEVICE_OPTIONS_FAILURE_KINDS,
+  DEVICE_OPTIONS_FAILURE_PHASES,
   INVENTORY_BACKEND_KINDS,
   INVENTORY_DIAGNOSTIC_CODES,
   INVENTORY_DIAGNOSTIC_SEVERITIES,
@@ -14,6 +16,13 @@ import {
   type AllocationResult,
   type AllocationSuccessWithLease,
   type BackendReadinessRecord,
+  type DeviceOptionsCapabilities,
+  type DeviceOptionsFailureDiagnostics,
+  type DeviceOptionsFailureKind,
+  type DeviceOptionsRequest,
+  type DeviceOptionsResult,
+  type DeviceOptionsStreamSummary,
+  type DeviceOptionTokenCapability,
   type DeviceRecord,
   type DslogicDeviceIdentity,
   type InventoryBackendKind,
@@ -140,6 +149,64 @@ const readLiveCaptureEnum = <T extends string>(
   }
 
   throw new Error(`Malformed live capture response at ${path}`);
+};
+
+const readDeviceOptionsString = (
+  value: unknown,
+  path: string,
+  allowNull = false,
+): string | null => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (allowNull && value === null) {
+    return null;
+  }
+
+  throw new Error(`Malformed device options response at ${path}`);
+};
+
+const readDeviceOptionsNumber = (
+  value: unknown,
+  path: string,
+  allowNull = false,
+): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (allowNull && value === null) {
+    return null;
+  }
+
+  throw new Error(`Malformed device options response at ${path}`);
+};
+
+const readDeviceOptionsBoolean = (value: unknown, path: string): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  throw new Error(`Malformed device options response at ${path}`);
+};
+
+const readDeviceOptionsEnum = <T extends string>(
+  value: unknown,
+  path: string,
+  allowed: readonly T[],
+  allowNull = false,
+): T | null => {
+  const parsed = readDeviceOptionsString(value, path, allowNull);
+  if (parsed === null) {
+    return null;
+  }
+
+  if (allowed.includes(parsed as T)) {
+    return parsed as T;
+  }
+
+  throw new Error(`Malformed device options response at ${path}`);
 };
 
 const parseInventoryDiagnostic = (
@@ -629,6 +696,203 @@ const parseLiveCaptureFailureDiagnosticsValue = (
   };
 };
 
+const parseDeviceOptionTokenCapability = (
+  value: unknown,
+  path: string,
+): DeviceOptionTokenCapability => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  const capability: DeviceOptionTokenCapability = {
+    token: readDeviceOptionsString(value.token, `${path}.token`) as string,
+  };
+
+  if (value.label !== undefined) {
+    capability.label = readDeviceOptionsString(value.label, `${path}.label`) as string;
+  }
+  if (value.description !== undefined) {
+    capability.description = readDeviceOptionsString(
+      value.description,
+      `${path}.description`,
+    ) as string;
+  }
+
+  return capability;
+};
+
+const parseDeviceOptionTokenCapabilityArray = (
+  value: unknown,
+  path: string,
+): DeviceOptionTokenCapability[] => {
+  if (!Array.isArray(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return value.map((entry, index) =>
+    parseDeviceOptionTokenCapability(entry, `${path}[${index}]`),
+  );
+};
+
+const parseDeviceOptionsCapabilities = (
+  value: unknown,
+  path: string,
+): DeviceOptionsCapabilities => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    operations: parseDeviceOptionTokenCapabilityArray(
+      value.operations,
+      `${path}.operations`,
+    ),
+    channels: parseDeviceOptionTokenCapabilityArray(value.channels, `${path}.channels`),
+    stopConditions: parseDeviceOptionTokenCapabilityArray(
+      value.stopConditions,
+      `${path}.stopConditions`,
+    ),
+    filters: parseDeviceOptionTokenCapabilityArray(value.filters, `${path}.filters`),
+    thresholds: parseDeviceOptionTokenCapabilityArray(
+      value.thresholds,
+      `${path}.thresholds`,
+    ),
+  };
+};
+
+const parseDeviceOptionsStreamSummary = (
+  value: unknown,
+  path: string,
+): DeviceOptionsStreamSummary => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    kind: readDeviceOptionsEnum(
+      value.kind,
+      `${path}.kind`,
+      ["empty", "text", "bytes"] as const,
+    ) as DeviceOptionsStreamSummary["kind"],
+    byteLength: readDeviceOptionsNumber(value.byteLength, `${path}.byteLength`) as number,
+    textLength: readDeviceOptionsNumber(value.textLength, `${path}.textLength`, true),
+    preview: readDeviceOptionsString(value.preview, `${path}.preview`, true),
+    truncated: readDeviceOptionsBoolean(value.truncated, `${path}.truncated`),
+  };
+};
+
+const parseDeviceOptionsFailureDiagnosticsValue = (
+  value: unknown,
+  path: string,
+): DeviceOptionsFailureDiagnostics => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    phase: readDeviceOptionsEnum(
+      value.phase,
+      `${path}.phase`,
+      DEVICE_OPTIONS_FAILURE_PHASES,
+    ) as DeviceOptionsFailureDiagnostics["phase"],
+    providerKind: readDeviceOptionsEnum(
+      value.providerKind,
+      `${path}.providerKind`,
+      INVENTORY_PROVIDER_KINDS,
+      true,
+    ) as DeviceOptionsFailureDiagnostics["providerKind"],
+    backendKind: readDeviceOptionsEnum(
+      value.backendKind,
+      `${path}.backendKind`,
+      INVENTORY_BACKEND_KINDS,
+      true,
+    ) as DeviceOptionsFailureDiagnostics["backendKind"],
+    backendVersion: readDeviceOptionsString(
+      value.backendVersion,
+      `${path}.backendVersion`,
+      true,
+    ),
+    timeoutMs: readDeviceOptionsNumber(value.timeoutMs, `${path}.timeoutMs`, true),
+    nativeCode: readDeviceOptionsString(value.nativeCode, `${path}.nativeCode`, true),
+    optionsOutput:
+      value.optionsOutput === null
+        ? null
+        : parseDeviceOptionsStreamSummary(value.optionsOutput, `${path}.optionsOutput`),
+    diagnosticOutput:
+      value.diagnosticOutput === null
+        ? null
+        : parseDeviceOptionsStreamSummary(
+            value.diagnosticOutput,
+            `${path}.diagnosticOutput`,
+          ),
+    details: Array.isArray(value.details)
+      ? value.details.map((entry, index) =>
+          readDeviceOptionsString(entry, `${path}.details[${index}]`) as string,
+        )
+      : (() => {
+          throw new Error(`Malformed device options response at ${path}.details`);
+        })(),
+    diagnostics: Array.isArray(value.diagnostics)
+      ? value.diagnostics.map((entry, index) =>
+          parseInventoryDiagnostic(entry, `${path}.diagnostics[${index}]`),
+        )
+      : (() => {
+          throw new Error(`Malformed device options response at ${path}.diagnostics`);
+        })(),
+  };
+};
+
+const parseDeviceOptionsResult = (value: unknown): DeviceOptionsResult => {
+  if (!isObject(value)) {
+    throw new Error("Malformed device options response at root");
+  }
+
+  const ok = readDeviceOptionsBoolean(value.ok, "root.ok");
+  if (ok) {
+    return {
+      ok: true,
+      providerKind: readDeviceOptionsEnum(
+        value.providerKind,
+        "root.providerKind",
+        INVENTORY_PROVIDER_KINDS,
+      ) as InventoryProviderKind,
+      backendKind: readDeviceOptionsEnum(
+        value.backendKind,
+        "root.backendKind",
+        INVENTORY_BACKEND_KINDS,
+      ) as InventoryBackendKind,
+      session: parseLiveCaptureSession(value.session, "root.session"),
+      requestedAt: readDeviceOptionsString(value.requestedAt, "root.requestedAt") as string,
+      capabilities: parseDeviceOptionsCapabilities(
+        value.capabilities,
+        "root.capabilities",
+      ),
+    };
+  }
+
+  if (value.capabilities !== null) {
+    throw new Error("Malformed device options response at root.capabilities");
+  }
+
+  return {
+    ok: false,
+    reason: readDeviceOptionsString(value.reason, "root.reason") as "device-options-failed",
+    kind: readDeviceOptionsEnum(
+      value.kind,
+      "root.kind",
+      DEVICE_OPTIONS_FAILURE_KINDS,
+    ) as DeviceOptionsFailureKind,
+    message: readDeviceOptionsString(value.message, "root.message") as string,
+    session: parseLiveCaptureSession(value.session, "root.session"),
+    requestedAt: readDeviceOptionsString(value.requestedAt, "root.requestedAt") as string,
+    capabilities: null,
+    diagnostics: parseDeviceOptionsFailureDiagnosticsValue(
+      value.diagnostics,
+      "root.diagnostics",
+    ),
+  };
+};
+
 const parseLiveCaptureResult = (value: unknown): LiveCaptureResult => {
   if (!isObject(value)) {
     throw new Error("Malformed live capture response at root");
@@ -822,6 +1086,20 @@ export class HttpResourceManager implements SnapshotResourceManager {
     }
 
     return body;
+  }
+
+  async inspectDeviceOptions(
+    request: DeviceOptionsRequest,
+  ): Promise<DeviceOptionsResult> {
+    return this.#requestJson(
+      `${this.#baseUrl}/devices/options`,
+      parseDeviceOptionsResult,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      },
+    );
   }
 
   async liveCapture(request: LiveCaptureRequest): Promise<LiveCaptureResult> {

@@ -291,5 +291,6 @@ export const createLiveCaptureRequest = (
 ): LiveCaptureRequest => ({
   session,
   requestedAt: overrides.requestedAt ?? session.startedAt,
-  timeoutMs: overrides.timeoutMs
+  timeoutMs: overrides.timeoutMs,
+  captureTuning: overrides.captureTuning
 });

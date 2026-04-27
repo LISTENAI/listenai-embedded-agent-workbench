@@ -1259,7 +1259,7 @@ describe("Hono app routes", () => {
       requestedAt: refreshedAt,
       timeoutMs: 15000
     };
-    const manager = {
+    const manager: SnapshotResourceManager = {
       listDevices: async () => [],
       refreshInventory: async () => [],
       getInventorySnapshot: async () => dslogicSnapshot,
@@ -1279,6 +1279,27 @@ describe("Hono app routes", () => {
         ownerSkillId: "unused",
         message: "unused",
         device: null
+      }),
+      inspectDeviceOptions: async (optionsRequest) => ({
+        ok: false,
+        reason: "device-options-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: optionsRequest.session,
+        requestedAt: optionsRequest.requestedAt,
+        capabilities: null,
+        diagnostics: {
+          phase: "validate-session",
+          providerKind: optionsRequest.session.device.providerKind ?? null,
+          backendKind: optionsRequest.session.device.backendKind ?? null,
+          backendVersion: null,
+          timeoutMs: optionsRequest.timeoutMs ?? null,
+          nativeCode: null,
+          optionsOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: optionsRequest.session.device.diagnostics ?? []
+        }
       }),
       liveCapture: async () => ({
         ok: true,
@@ -1313,7 +1334,7 @@ describe("Hono app routes", () => {
           }
         ]
       })
-    } as SnapshotResourceManager;
+    };
     const leaseManager = new LeaseManager();
     const app = createApp(manager, leaseManager);
 
