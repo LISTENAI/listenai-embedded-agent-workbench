@@ -15,7 +15,9 @@ import type {
   SnapshotResourceManager
 } from "@listenai/contracts";
 import {
+  createDslogicDeviceOptionsProvider,
   createDslogicLiveCaptureProvider,
+  type DslogicDeviceOptionsRunner,
   type DslogicLiveCaptureRunner
 } from "./dslogic/live-capture.js";
 import type {
@@ -34,6 +36,7 @@ export type { ResourceManager, SnapshotResourceManager } from "@listenai/contrac
 
 export interface ResourceManagerOptions {
   now?: () => string;
+  deviceOptionsRunner?: DslogicDeviceOptionsRunner;
   liveCaptureRunner?: DslogicLiveCaptureRunner;
 }
 
@@ -135,11 +138,22 @@ const buildUnsupportedProviderFailure = (
 });
 
 const collectDeviceOptionsProviders = (
-  providers: readonly RegisteredDeviceProvider[]
-): readonly DeviceOptionsProvider[] =>
-  providers.flatMap(({ provider }) =>
+  providers: readonly RegisteredDeviceProvider[],
+  legacyDeviceOptionsRunner?: DslogicDeviceOptionsRunner
+): readonly DeviceOptionsProvider[] => {
+  const dispatchProviders = providers.flatMap(({ provider }) =>
     isDeviceOptionsProvider(provider.deviceOptions) ? [provider.deviceOptions] : []
   );
+
+  if (!legacyDeviceOptionsRunner) {
+    return dispatchProviders;
+  }
+
+  return [
+    ...dispatchProviders,
+    createDslogicDeviceOptionsProvider(legacyDeviceOptionsRunner)
+  ];
+};
 
 const collectLiveCaptureProviders = (
   providers: readonly RegisteredDeviceProvider[],
@@ -296,7 +310,10 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
   constructor(providers: DeviceProviderInput, options: ResourceManagerOptions = {}) {
     this.#providers = normalizeDeviceProviders(providers);
     this.#now = options.now ?? (() => new Date().toISOString());
-    this.#deviceOptionsProviders = collectDeviceOptionsProviders(this.#providers);
+    this.#deviceOptionsProviders = collectDeviceOptionsProviders(
+      this.#providers,
+      options.deviceOptionsRunner
+    );
     this.#liveCaptureProviders = collectLiveCaptureProviders(
       this.#providers,
       options.liveCaptureRunner

@@ -7,6 +7,7 @@ import {
   type InventorySnapshot
 } from "@listenai/contracts"
 import type {
+  DeviceOptionsProvider,
   DeviceProvider,
   DiscoveredDevice,
   LiveCaptureProvider
@@ -21,7 +22,9 @@ import {
   type DslogicProbeDeviceCandidate
 } from "./backend-probe.js"
 import {
+  createDslogicDeviceOptionsProvider,
   createDslogicLiveCaptureProvider,
+  type DslogicDeviceOptionsRunner,
   type DslogicLiveCaptureRunner
 } from "./live-capture.js"
 
@@ -29,6 +32,7 @@ export interface DslogicDeviceProviderOptions {
   probe?: DslogicBackendProbe
   now?: () => string
   getHostPlatform?: () => NodeJS.Platform
+  deviceOptionsRunner?: DslogicDeviceOptionsRunner
   liveCaptureRunner?: DslogicLiveCaptureRunner
 }
 
@@ -199,6 +203,7 @@ export class DslogicDeviceProvider implements DeviceProvider {
   readonly #probe: DslogicBackendProbe
   readonly #now: () => string
   readonly #getHostPlatform: () => NodeJS.Platform
+  readonly deviceOptions?: DeviceOptionsProvider
   readonly liveCapture?: LiveCaptureProvider
 
   constructor(options: DslogicDeviceProviderOptions = {}) {
@@ -208,6 +213,9 @@ export class DslogicDeviceProvider implements DeviceProvider {
     })
     this.#now = options.now ?? (() => new Date().toISOString())
     this.#getHostPlatform = options.getHostPlatform ?? (() => process.platform)
+    this.deviceOptions = options.deviceOptionsRunner
+      ? createDslogicDeviceOptionsProvider(options.deviceOptionsRunner)
+      : undefined
     this.liveCapture = options.liveCaptureRunner
       ? createDslogicLiveCaptureProvider(options.liveCaptureRunner)
       : undefined

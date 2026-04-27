@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
-import type { LiveCaptureRequest } from "@listenai/contracts"
+import type { DeviceOptionsRequest, LiveCaptureRequest } from "@listenai/contracts"
 import {
+  createDefaultDslogicNativeDeviceOptionsBackend,
   createDefaultDslogicNativeLiveCaptureBackend,
   createDslogicNativeRuntime,
   type DslogicNativeCommandResult,
@@ -37,7 +38,7 @@ const createCommandRunner = (results: readonly DslogicNativeCommandResult[]) => 
   return { runner, calls }
 }
 
-const createCaptureRequest = (): LiveCaptureRequest => ({
+const createCaptureRequest = (overrides: Partial<LiveCaptureRequest> = {}): LiveCaptureRequest => ({
   session: {
     sessionId: "session-1",
     deviceId: "dslogic-plus",
@@ -71,6 +72,13 @@ const createCaptureRequest = (): LiveCaptureRequest => ({
       channels: [{ channelId: "D0", label: "CLK" }]
     }
   },
+  requestedAt: checkedAt,
+  timeoutMs: 3_000,
+  ...overrides
+})
+
+const createOptionsRequest = (): DeviceOptionsRequest => ({
+  session: createCaptureRequest().session,
   requestedAt: checkedAt,
   timeoutMs: 3_000
 })
@@ -561,4 +569,256 @@ describe("native-runtime", () => {
     ])
     expect(removedTempDirs).toEqual(["/tmp/dslogic-capture-test"])
   })
+
+  it("looks up DSLogic native options from noisy JSON output", async () => {
+    const { runner, calls } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "noise before\n{\"devices\":[{\"handle\":7,\"stable_id\":\"dslogic-plus\",\"model\":\"DSLogic Plus\"}]}\nnoise after",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "sr: options follow\n{\"capabilities\":{\"operations\":[{\"token\":\"collect\",\"label\":\"Collect\"}],\"channels\":[\"buffer\"],\"stop_conditions\":[\"samples\"],\"filters\":[\"none\"],\"thresholds\":[{\"value\":\"1.8v\",\"description\":\"CMOS 1.8V\"}]}}\n",
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeDeviceOptionsBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: {
+            state: "ready",
+            libraryPath: "/usr/bin/dsview-cli",
+            binaryPath: "/usr/bin/dsview-cli",
+            version: "1.2.2"
+          },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner
+    })
+
+    await expect(backend.inspectDeviceOptions(createOptionsRequest())).resolves.toEqual({
+      ok: true,
+      backendVersion: "1.2.2",
+      capabilities: {
+        operations: [{ token: "collect", label: "Collect" }],
+        channels: [{ token: "buffer" }],
+        stopConditions: [{ token: "samples" }],
+        filters: [{ token: "none" }],
+        thresholds: [{ token: "1.8v", description: "CMOS 1.8V" }]
+      },
+      optionsOutput: {
+        text: "sr: options follow\n{\"capabilities\":{\"operations\":[{\"token\":\"collect\",\"label\":\"Collect\"}],\"channels\":[\"buffer\"],\"stop_conditions\":[\"samples\"],\"filters\":[\"none\"],\"thresholds\":[{\"value\":\"1.8v\",\"description\":\"CMOS 1.8V\"}]}}\n"
+      }
+    })
+    expect(calls).toEqual([
+      {
+        command: "/usr/bin/dsview-cli",
+        args: ["devices", "list", "--format", "json"],
+        timeoutMs: 3_000,
+        maxBufferBytes: 512 * 1024
+      },
+      {
+        command: "/usr/bin/dsview-cli",
+        args: ["devices", "options", "--format", "json", "--handle", "7"],
+        timeoutMs: 3_000,
+        maxBufferBytes: 256 * 1024
+      }
+    ])
+  })
+
+  it("reports malformed DSLogic options JSON as a parse-options failure", async () => {
+    const { runner } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"capabilities\":{\"operations\":\"collect\"}}",
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeDeviceOptionsBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: null, binaryPath: null, version: "1.2.2" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner
+    })
+
+    await expect(backend.inspectDeviceOptions(createOptionsRequest())).resolves.toMatchObject({
+      ok: false,
+      kind: "malformed-output",
+      phase: "parse-options",
+      message: "dsview-cli device options output did not include parseable capability tokens.",
+      optionsOutput: {
+        text: "{\"capabilities\":{\"operations\":\"collect\"}}"
+      }
+    })
+  })
+
+  it("reports native options command timeouts without running capture", async () => {
+    const { runner } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: false,
+        reason: "timeout",
+        stdout: "partial options",
+        stderr: "still waiting",
+        exitCode: null,
+        signal: "SIGTERM",
+        nativeCode: null
+      }
+    ])
+    const backend = createDefaultDslogicNativeDeviceOptionsBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: null, binaryPath: null, version: "1.2.2" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner
+    })
+
+    await expect(backend.inspectDeviceOptions(createOptionsRequest())).resolves.toMatchObject({
+      ok: false,
+      kind: "timeout",
+      phase: "inspect-options",
+      message: "Timed out while inspecting DSLogic device options.",
+      optionsOutput: { text: "partial options\nstill waiting" }
+    })
+  })
+
+  it("rejects unsupported tuning tokens before starting capture", async () => {
+    const { runner, calls } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"operations\":[\"collect\"],\"channels\":[\"buffer\"],\"stop\":[\"samples\"],\"filters\":[\"none\"],\"thresholds\":[\"1.8v\"]}",
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeLiveCaptureBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: null, binaryPath: null, version: "1.2.2" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner
+    })
+
+    await expect(backend.capture(createCaptureRequest({
+      captureTuning: { operation: "unsupported" }
+    }))).resolves.toMatchObject({
+      ok: false,
+      kind: "capture-failed",
+      phase: "prepare-runtime",
+      message: "Live capture request includes DSLogic tuning tokens not reported by the native runtime.",
+      details: ["Unsupported capture tuning operation token unsupported. Supported tokens: collect."]
+    })
+    expect(calls).toHaveLength(2)
+  })
+
+  it("maps supported tuning tokens into dsview-cli capture arguments", async () => {
+    const { runner, calls } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"operations\":[\"collect\"],\"channels\":[\"buffer\"],\"stop\":[\"samples\"],\"filters\":[\"none\"],\"thresholds\":[\"1.8v\"]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"artifacts\":{\"vcd_path\":\"/tmp/dslogic-tuned/dslogic-plus.vcd\",\"metadata_path\":\"/tmp/dslogic-tuned/dslogic-plus.json\"}}",
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeLiveCaptureBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: "/usr/bin/dsview-cli", binaryPath: "/usr/bin/dsview-cli", version: "1.2.2" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner,
+      createTempDir: async () => "/tmp/dslogic-tuned",
+      removeTempDir: async () => undefined,
+      readTextFile: async (path) => path.endsWith(".vcd") ? "$date\n$end\n" : "{}"
+    })
+
+    await expect(backend.capture(createCaptureRequest({
+      captureTuning: {
+        operation: "collect",
+        channel: "buffer",
+        stop: "samples",
+        filter: "none",
+        threshold: "1.8v"
+      }
+    }))).resolves.toMatchObject({ ok: true })
+    expect(calls[2]?.args).toEqual([
+      "capture",
+      "--format",
+      "json",
+      "--handle",
+      "1",
+      "--sample-rate-hz",
+      "1000000",
+      "--sample-limit",
+      "4000",
+      "--channels",
+      "0",
+      "--operation",
+      "collect",
+      "--channel",
+      "buffer",
+      "--stop",
+      "samples",
+      "--filter",
+      "none",
+      "--threshold",
+      "1.8v",
+      "--output",
+      "/tmp/dslogic-tuned/dslogic-plus.vcd",
+      "--metadata-output",
+      "/tmp/dslogic-tuned/dslogic-plus.json",
+      "--wait-timeout-ms",
+      "3000",
+      "--poll-interval-ms",
+      "50"
+    ])
+  })
+
 })

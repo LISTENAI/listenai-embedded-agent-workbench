@@ -4,12 +4,17 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import process from "node:process"
 import type {
+  DeviceOptionsCapabilities,
+  DeviceOptionsFailureKind,
+  DeviceOptionsFailurePhase,
+  DeviceOptionsRequest,
   InventoryDiagnosticCode,
   InventoryPlatform,
   LiveCaptureArtifact,
   LiveCaptureFailureKind,
   LiveCaptureFailurePhase,
-  LiveCaptureRequest
+  LiveCaptureRequest,
+  LiveCaptureTuning
 } from "@listenai/contracts"
 import type { DslogicProbeDeviceCandidate } from "./backend-probe.js"
 
@@ -19,6 +24,7 @@ export const DEFAULT_DSLOGIC_RUNTIME_PROBE_TIMEOUT_MS = 3_000
 const DEFAULT_DSLOGIC_RUNTIME_PROBE_MAX_BUFFER_BYTES = 64 * 1024
 const DEFAULT_DSLOGIC_CAPTURE_TIMEOUT_MS = 15_000
 const DEFAULT_DSLOGIC_CAPTURE_MAX_BUFFER_BYTES = 512 * 1024
+const DEFAULT_DSLOGIC_OPTIONS_MAX_BUFFER_BYTES = 256 * 1024
 const DEFAULT_DSVIEW_CAPTURE_POLL_INTERVAL_MS = 50
 const DEFAULT_DSVIEW_CLI_PATH = "dsview-cli"
 
@@ -95,6 +101,35 @@ export type DslogicNativeCaptureResult =
 
 export interface DslogicNativeLiveCaptureBackend {
   capture(request: LiveCaptureRequest): Promise<DslogicNativeCaptureResult>
+}
+
+export interface DslogicNativeDeviceOptionsSuccess {
+  ok: true
+  backendVersion?: string | null
+  capabilities: DeviceOptionsCapabilities
+  optionsOutput?: DslogicNativeCaptureStreamValue
+  diagnosticOutput?: DslogicNativeCaptureStreamValue
+}
+
+export interface DslogicNativeDeviceOptionsFailure {
+  ok: false
+  kind: Exclude<DeviceOptionsFailureKind, "device-not-found" | "device-not-allocated" | "owner-mismatch" | "unsupported-runtime">
+  phase: Exclude<DeviceOptionsFailurePhase, "validate-session">
+  message: string
+  backendVersion?: string | null
+  timeoutMs?: number
+  nativeCode?: string | null
+  optionsOutput?: DslogicNativeCaptureStreamValue
+  diagnosticOutput?: DslogicNativeCaptureStreamValue
+  details?: readonly string[]
+}
+
+export type DslogicNativeDeviceOptionsResult =
+  | DslogicNativeDeviceOptionsSuccess
+  | DslogicNativeDeviceOptionsFailure
+
+export interface DslogicNativeDeviceOptionsBackend {
+  inspectDeviceOptions(request: DeviceOptionsRequest): Promise<DslogicNativeDeviceOptionsResult>
 }
 
 export interface DslogicNativeCommandSuccess {
@@ -174,6 +209,11 @@ export interface CreateDslogicNativeLiveCaptureOptions
   readTextFile?: (path: string) => Promise<string>
   createTempDir?: () => Promise<string>
   removeTempDir?: (path: string) => Promise<void>
+}
+
+export interface CreateDslogicNativeDeviceOptionsOptions
+  extends CreateDslogicNativeRuntimeOptions {
+  runtime?: DslogicNativeRuntime
 }
 
 export const resolveInventoryPlatform = (
@@ -436,6 +476,182 @@ const parseDsviewListedDevices = (output: string): ParsedDsviewListedDevice[] =>
   })
 }
 
+const readTokenLabel = (entry: Record<string, unknown>, token: string): string | undefined => {
+  const label = readRecordString(entry.label ?? entry.display_label ?? entry.displayLabel)
+  const name = readRecordString(entry.name)
+
+  return label ?? (name && name !== token ? name : undefined)
+}
+
+const parseCapabilityGroup = (
+  value: unknown
+): DeviceOptionsCapabilities["operations"] | null => {
+  if (value === undefined || value === null) {
+    return []
+  }
+
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  const tokens: Array<DeviceOptionsCapabilities["operations"][number]> = []
+  const seen = new Set<string>()
+
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      const token = entry.trim()
+      if (token.length > 0 && !seen.has(token)) {
+        seen.add(token)
+        tokens.push({ token })
+      }
+      continue
+    }
+
+    if (!isJsonRecord(entry)) {
+      return null
+    }
+
+    const token = readRecordString(
+      entry.token ?? entry.value ?? entry.id ?? entry.key ?? entry.name
+    )
+    if (!token) {
+      return null
+    }
+
+    if (seen.has(token)) {
+      continue
+    }
+
+    seen.add(token)
+    const capability: DeviceOptionsCapabilities["operations"][number] = { token }
+    const label = readTokenLabel(entry, token)
+    const description = readRecordString(entry.description ?? entry.desc ?? entry.help)
+    if (label) {
+      capability.label = label
+    }
+    if (description) {
+      capability.description = description
+    }
+    tokens.push(capability)
+  }
+
+  return tokens
+}
+
+const readCapabilityGroup = (
+  payload: Record<string, unknown>,
+  aliases: readonly string[]
+): unknown => {
+  for (const alias of aliases) {
+    if (Object.hasOwn(payload, alias)) {
+      return payload[alias]
+    }
+  }
+
+  return undefined
+}
+
+const parseDsviewDeviceOptions = (output: string): DeviceOptionsCapabilities | null => {
+  const payloadText = extractJsonObject(output)
+  if (!payloadText) {
+    return null
+  }
+
+  const payload = JSON.parse(payloadText) as unknown
+  if (!isJsonRecord(payload)) {
+    return null
+  }
+
+  const root = isJsonRecord(payload.capabilities)
+    ? payload.capabilities
+    : isJsonRecord(payload.options)
+      ? payload.options
+      : payload
+  const operations = parseCapabilityGroup(
+    readCapabilityGroup(root, ["operations", "operation", "modes", "mode"])
+  )
+  const channels = parseCapabilityGroup(
+    readCapabilityGroup(root, ["channels", "channel"])
+  )
+  const stopConditions = parseCapabilityGroup(
+    readCapabilityGroup(root, ["stopConditions", "stop_conditions", "stops", "stop"])
+  )
+  const filters = parseCapabilityGroup(
+    readCapabilityGroup(root, ["filters", "filter"])
+  )
+  const thresholds = parseCapabilityGroup(
+    readCapabilityGroup(root, ["thresholds", "threshold"])
+  )
+
+  if (!operations || !channels || !stopConditions || !filters || !thresholds) {
+    return null
+  }
+
+  return {
+    operations,
+    channels,
+    stopConditions,
+    filters,
+    thresholds
+  }
+}
+
+const getSupportedTokens = (
+  capabilities: DeviceOptionsCapabilities,
+  key: keyof LiveCaptureTuning
+): readonly string[] => {
+  switch (key) {
+    case "operation":
+      return capabilities.operations.map((entry) => entry.token)
+    case "channel":
+      return capabilities.channels.map((entry) => entry.token)
+    case "stop":
+      return capabilities.stopConditions.map((entry) => entry.token)
+    case "filter":
+      return capabilities.filters.map((entry) => entry.token)
+    case "threshold":
+      return capabilities.thresholds.map((entry) => entry.token)
+  }
+}
+
+const validateCaptureTuning = (
+  tuning: LiveCaptureTuning | undefined,
+  capabilities: DeviceOptionsCapabilities
+): { ok: true; args: string[] } | { ok: false; details: readonly string[] } => {
+  if (!tuning) {
+    return { ok: true, args: [] }
+  }
+
+  const argByKey: Record<keyof LiveCaptureTuning, string> = {
+    operation: "--operation",
+    channel: "--channel",
+    stop: "--stop",
+    filter: "--filter",
+    threshold: "--threshold"
+  }
+  const args: string[] = []
+  const details: string[] = []
+
+  for (const key of ["operation", "channel", "stop", "filter", "threshold"] as const) {
+    const token = tuning[key]?.trim()
+    if (!token) {
+      continue
+    }
+
+    const supportedTokens = getSupportedTokens(capabilities, key)
+    if (!supportedTokens.includes(token)) {
+      details.push(
+        `Unsupported capture tuning ${key} token ${token}. Supported tokens: ${supportedTokens.length > 0 ? supportedTokens.join(", ") : "none reported"}.`
+      )
+      continue
+    }
+
+    args.push(argByKey[key], token)
+  }
+
+  return details.length > 0 ? { ok: false, details } : { ok: true, args }
+}
+
 const parseDsviewCaptureResult = (output: string): ParsedDsviewCaptureResult | null => {
   const payloadText = extractJsonObject(output)
   if (!payloadText) {
@@ -602,7 +818,7 @@ const resolveSampleLimit = (request: LiveCaptureRequest): number => {
 
 const selectCaptureHandle = (
   devices: readonly ParsedDsviewListedDevice[],
-  request: LiveCaptureRequest
+  request: Pick<LiveCaptureRequest, "session"> | Pick<DeviceOptionsRequest, "session">
 ): ParsedDsviewListedDevice | null => {
   const requestedDeviceId = request.session.deviceId
   const requestedModel = request.session.device.dslogic?.modelDisplayName ?? null
@@ -666,6 +882,97 @@ const createRuntimeUnavailableFailure = (
   }
 }
 
+const nativeCodeToString = (nativeCode: string | number | null): string | null =>
+  typeof nativeCode === "string"
+    ? nativeCode
+    : nativeCode === null
+      ? null
+      : String(nativeCode)
+
+const resolveLookupTimeoutMs = (requestedTimeoutMs: number | undefined): number =>
+  Math.min(
+    requestedTimeoutMs ?? DEFAULT_DSLOGIC_RUNTIME_PROBE_TIMEOUT_MS,
+    DEFAULT_DSLOGIC_RUNTIME_PROBE_TIMEOUT_MS
+  )
+
+const createOptionsRuntimeUnavailableFailure = (
+  snapshot: DslogicNativeRuntimeSnapshot,
+  details: readonly string[] = []
+): DslogicNativeDeviceOptionsFailure => {
+  const diagnostic = snapshot.diagnostics[0]
+  return {
+    ok: false,
+    kind: "runtime-unavailable",
+    phase: "prepare-runtime",
+    message:
+      diagnostic?.message ??
+      `dsview-cli runtime is not available on ${snapshot.host.platform}.`,
+    backendVersion: snapshot.runtime.version,
+    nativeCode: diagnostic?.code ?? snapshot.runtime.state,
+    details
+  }
+}
+
+const inspectOptionsForHandle = async (options: {
+  binaryPath: string
+  executeCommand: DslogicNativeCommandRunner
+  runtimeSnapshot: DslogicNativeRuntimeSnapshot
+  handle: number
+  timeoutMs: number
+}): Promise<DslogicNativeDeviceOptionsResult> => {
+  const optionsResult = await options.executeCommand(
+    options.binaryPath,
+    ["devices", "options", "--format", "json", "--handle", String(options.handle)],
+    {
+      timeoutMs: options.timeoutMs,
+      maxBufferBytes: DEFAULT_DSLOGIC_OPTIONS_MAX_BUFFER_BYTES
+    }
+  )
+  const commandOutput = combineCommandOutput(optionsResult)
+
+  if (!optionsResult.ok) {
+    return {
+      ok: false,
+      kind: optionsResult.reason === "timeout" ? "timeout" : "native-error",
+      phase: "inspect-options",
+      message:
+        optionsResult.reason === "timeout"
+          ? "Timed out while inspecting DSLogic device options."
+          : "dsview-cli failed while inspecting DSLogic device options.",
+      backendVersion: options.runtimeSnapshot.runtime.version,
+      timeoutMs: options.timeoutMs,
+      nativeCode: nativeCodeToString(optionsResult.nativeCode),
+      optionsOutput: commandOutput.length > 0 ? { text: commandOutput } : undefined,
+      details: [
+        `Resolved handle ${options.handle} before running \`dsview-cli devices options\`.`
+      ]
+    }
+  }
+
+  const capabilities = parseDsviewDeviceOptions(commandOutput)
+  if (!capabilities) {
+    return {
+      ok: false,
+      kind: "malformed-output",
+      phase: "parse-options",
+      message: "dsview-cli device options output did not include parseable capability tokens.",
+      backendVersion: options.runtimeSnapshot.runtime.version,
+      timeoutMs: options.timeoutMs,
+      optionsOutput: commandOutput.length > 0 ? { text: commandOutput } : undefined,
+      details: [
+        "Expected JSON with operation/channel/stop/filter/threshold capability arrays."
+      ]
+    }
+  }
+
+  return {
+    ok: true,
+    backendVersion: options.runtimeSnapshot.runtime.version,
+    capabilities,
+    optionsOutput: commandOutput.length > 0 ? { text: commandOutput } : undefined
+  }
+}
+
 export const createDslogicNativeRuntime = (
   options: CreateDslogicNativeRuntimeOptions = {}
 ): DslogicNativeRuntime => {
@@ -707,6 +1014,82 @@ export const createDslogicNativeRuntime = (
       }
     }
   }
+}
+
+export const createDefaultDslogicNativeDeviceOptionsBackend = (
+  options: CreateDslogicNativeDeviceOptionsOptions = {}
+): DslogicNativeDeviceOptionsBackend => {
+  const executeCommand = options.executeCommand ?? defaultExecuteCommand
+  const runtime = options.runtime ?? createDslogicNativeRuntime(options)
+
+  return createDslogicNativeDeviceOptionsBackend(
+    async (request): Promise<DslogicNativeDeviceOptionsResult> => {
+      const runtimeSnapshot = await runtime.probe()
+      if (runtimeSnapshot.runtime.state !== "ready") {
+        const details = runtimeSnapshot.runtime.binaryPath
+          ? [`Resolved runtime path ${runtimeSnapshot.runtime.binaryPath} is not ready for device options.`]
+          : ["dsview-cli binary path could not be resolved."]
+        return createOptionsRuntimeUnavailableFailure(runtimeSnapshot, details)
+      }
+
+      const binaryPath = runtimeSnapshot.runtime.binaryPath ?? runtimeSnapshot.runtime.libraryPath ?? DEFAULT_DSVIEW_CLI_PATH
+      const timeoutMs = resolveLookupTimeoutMs(request.timeoutMs)
+      const deviceListResult = await executeCommand(
+        binaryPath,
+        ["devices", "list", "--format", "json"],
+        {
+          timeoutMs,
+          maxBufferBytes: DEFAULT_DSLOGIC_CAPTURE_MAX_BUFFER_BYTES
+        }
+      )
+      const deviceListOutput = combineCommandOutput(deviceListResult)
+
+      if (!deviceListResult.ok) {
+        return {
+          ok: false,
+          kind: deviceListResult.reason === "timeout" ? "timeout" : "native-error",
+          phase: "list-handles",
+          message:
+            deviceListResult.reason === "timeout"
+              ? "Timed out while resolving the DSLogic device handle for options lookup."
+              : `Unable to enumerate DSLogic handles through ${binaryPath}.`,
+          backendVersion: runtimeSnapshot.runtime.version,
+          timeoutMs,
+          nativeCode: nativeCodeToString(deviceListResult.nativeCode),
+          diagnosticOutput: deviceListOutput.length > 0 ? { text: deviceListOutput } : undefined,
+          details: [
+            "The runtime probe succeeded, but `dsview-cli devices list` could not produce a handle map for options lookup."
+          ]
+        }
+      }
+
+      const listedDevices = parseDsviewListedDevices(deviceListOutput)
+      const selectedDevice = selectCaptureHandle(listedDevices, request)
+      if (!selectedDevice) {
+        return {
+          ok: false,
+          kind: "native-error",
+          phase: "list-handles",
+          message: `Unable to resolve a dsview-cli handle for device ${request.session.deviceId}.`,
+          backendVersion: runtimeSnapshot.runtime.version,
+          timeoutMs,
+          diagnosticOutput: deviceListOutput.length > 0 ? { text: deviceListOutput } : undefined,
+          details: [
+            `No handle from \`dsview-cli devices list\` matched deviceId ${request.session.deviceId}.`,
+            "Device-options lookup requires a fresh runtime handle because dsview-cli does not accept stable ids directly."
+          ]
+        }
+      }
+
+      return inspectOptionsForHandle({
+        binaryPath,
+        executeCommand,
+        runtimeSnapshot,
+        handle: selectedDevice.handle,
+        timeoutMs
+      })
+    }
+  )
 }
 
 export const createDefaultDslogicNativeLiveCaptureBackend = (
@@ -751,6 +1134,7 @@ export const createDefaultDslogicNativeLiveCaptureBackend = (
         }
       )
 
+      const deviceListOutput = combineCommandOutput(deviceListResult)
       if (!deviceListResult.ok) {
         return {
           ok: false,
@@ -762,22 +1146,15 @@ export const createDefaultDslogicNativeLiveCaptureBackend = (
               : `Unable to enumerate DSLogic handles through ${binaryPath}.`,
           backendVersion: runtimeSnapshot.runtime.version,
           timeoutMs,
-          nativeCode:
-            typeof deviceListResult.nativeCode === "string"
-              ? deviceListResult.nativeCode
-              : deviceListResult.nativeCode === null
-                ? null
-                : String(deviceListResult.nativeCode),
-          diagnosticOutput: {
-            text: combineCommandOutput(deviceListResult)
-          },
+          nativeCode: nativeCodeToString(deviceListResult.nativeCode),
+          diagnosticOutput: deviceListOutput.length > 0 ? { text: deviceListOutput } : undefined,
           details: [
             "The runtime probe succeeded, but `dsview-cli devices list` could not produce a handle map for capture."
           ]
         }
       }
 
-      const listedDevices = parseDsviewListedDevices(combineCommandOutput(deviceListResult))
+      const listedDevices = parseDsviewListedDevices(deviceListOutput)
       const selectedDevice = selectCaptureHandle(listedDevices, request)
       if (!selectedDevice) {
         return {
@@ -786,14 +1163,60 @@ export const createDefaultDslogicNativeLiveCaptureBackend = (
           phase: "prepare-runtime",
           message: `Unable to resolve a dsview-cli handle for device ${request.session.deviceId}.`,
           backendVersion: runtimeSnapshot.runtime.version,
-          diagnosticOutput: {
-            text: combineCommandOutput(deviceListResult)
-          },
+          diagnosticOutput: deviceListOutput.length > 0 ? { text: deviceListOutput } : undefined,
           details: [
             `No handle from \`dsview-cli devices list\` matched deviceId ${request.session.deviceId}.`,
             "Live capture requires a fresh runtime handle because dsview-cli does not accept stable ids directly."
           ]
         }
+      }
+
+      let captureTuningArgs: string[] = []
+      if (request.captureTuning) {
+        const optionsResult = await inspectOptionsForHandle({
+          binaryPath,
+          executeCommand,
+          runtimeSnapshot,
+          handle: selectedDevice.handle,
+          timeoutMs: resolveLookupTimeoutMs(request.timeoutMs)
+        })
+
+        if (!optionsResult.ok) {
+          return {
+            ok: false,
+            kind:
+              optionsResult.kind === "timeout"
+                ? "timeout"
+                : optionsResult.kind === "malformed-output"
+                  ? "malformed-output"
+                  : "capture-failed",
+            phase: "prepare-runtime",
+            message: `Unable to validate DSLogic capture tuning: ${optionsResult.message}`,
+            backendVersion: optionsResult.backendVersion ?? runtimeSnapshot.runtime.version,
+            timeoutMs: optionsResult.timeoutMs,
+            nativeCode: optionsResult.nativeCode ?? null,
+            diagnosticOutput: optionsResult.optionsOutput ?? optionsResult.diagnosticOutput,
+            details: optionsResult.details ?? []
+          }
+        }
+
+        const tuningValidation = validateCaptureTuning(
+          request.captureTuning,
+          optionsResult.capabilities
+        )
+        if (!tuningValidation.ok) {
+          return {
+            ok: false,
+            kind: "capture-failed",
+            phase: "prepare-runtime",
+            message: "Live capture request includes DSLogic tuning tokens not reported by the native runtime.",
+            backendVersion: optionsResult.backendVersion ?? runtimeSnapshot.runtime.version,
+            timeoutMs: resolveLookupTimeoutMs(request.timeoutMs),
+            diagnosticOutput: optionsResult.optionsOutput,
+            details: tuningValidation.details
+          }
+        }
+        captureTuningArgs = tuningValidation.args
       }
 
       const tempDir = await createTempDir()
@@ -817,6 +1240,7 @@ export const createDefaultDslogicNativeLiveCaptureBackend = (
           String(sampleLimit),
           "--channels",
           channelResolution.indexes.join(","),
+          ...captureTuningArgs,
           "--output",
           outputPath,
           "--metadata-output",
@@ -848,12 +1272,7 @@ export const createDefaultDslogicNativeLiveCaptureBackend = (
                 : "dsview-cli capture failed.",
             backendVersion: runtimeSnapshot.runtime.version,
             timeoutMs,
-            nativeCode:
-              typeof captureResult.nativeCode === "string"
-                ? captureResult.nativeCode
-                : captureResult.nativeCode === null
-                  ? null
-                  : String(captureResult.nativeCode),
+            nativeCode: nativeCodeToString(captureResult.nativeCode),
             captureOutput: commandOutput.length > 0 ? { text: commandOutput } : undefined,
             details: [
               `Resolved handle ${selectedDevice.handle} for device ${request.session.deviceId}.`,
@@ -946,9 +1365,14 @@ export const createDslogicNativeLiveCaptureBackend = (
   capture: DslogicNativeLiveCaptureBackend["capture"]
 ): DslogicNativeLiveCaptureBackend => ({ capture })
 
+export const createDslogicNativeDeviceOptionsBackend = (
+  inspectDeviceOptions: DslogicNativeDeviceOptionsBackend["inspectDeviceOptions"]
+): DslogicNativeDeviceOptionsBackend => ({ inspectDeviceOptions })
+
 export {
   createDefaultProbeRuntime,
   defaultExecuteCommand,
+  parseDsviewDeviceOptions,
   parseDsviewListedDevices,
   parseDsviewVersionOutput
 }

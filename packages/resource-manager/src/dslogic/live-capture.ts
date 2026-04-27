@@ -3,6 +3,11 @@ import {
   DSLOGIC_PROVIDER_KIND,
   summarizeLiveCaptureArtifact,
   summarizeLiveCaptureArtifacts,
+  type DeviceOptionsFailure,
+  type DeviceOptionsFailureDiagnostics,
+  type DeviceOptionsRequest,
+  type DeviceOptionsResult,
+  type DeviceOptionsSuccess,
   type DeviceRecord,
   type LiveCaptureArtifact,
   type LiveCaptureArtifactSummary,
@@ -16,11 +21,14 @@ import {
   type LiveCaptureStreamSummary,
   type LiveCaptureSuccess
 } from "@listenai/contracts";
-import type { LiveCaptureProvider } from "../device-provider.js";
+import type { DeviceOptionsProvider, LiveCaptureProvider } from "../device-provider.js";
 import {
+  createDslogicNativeDeviceOptionsBackend,
   createDslogicNativeLiveCaptureBackend,
   type DslogicNativeCaptureFailure,
   type DslogicNativeCaptureStreamValue,
+  type DslogicNativeDeviceOptionsBackend,
+  type DslogicNativeDeviceOptionsFailure,
   type DslogicNativeLiveCaptureBackend
 } from "./native-runtime.js";
 
@@ -29,6 +37,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_CHANNEL_COUNT = 16;
 
 export type DslogicLiveCaptureRunner = DslogicNativeLiveCaptureBackend;
+export type DslogicDeviceOptionsRunner = DslogicNativeDeviceOptionsBackend;
+
+export type InspectDslogicDeviceOptionsOptions =
+  | { nativeOptions: DslogicNativeDeviceOptionsBackend }
+  | { runner: DslogicDeviceOptionsRunner };
 
 export type CaptureLiveDslogicOptions =
   | { nativeCapture: DslogicNativeLiveCaptureBackend }
@@ -140,6 +153,34 @@ const buildFailure = (
   }
 });
 
+const buildDeviceOptionsFailure = (
+  request: DeviceOptionsRequest,
+  kind: DeviceOptionsFailure["kind"],
+  phase: DeviceOptionsFailureDiagnostics["phase"],
+  message: string,
+  overrides: Partial<DeviceOptionsFailureDiagnostics> = {}
+): DeviceOptionsFailure => ({
+  ok: false,
+  reason: "device-options-failed",
+  kind,
+  message,
+  session: request.session,
+  requestedAt: request.requestedAt,
+  capabilities: null,
+  diagnostics: {
+    phase,
+    providerKind: request.session.device.providerKind ?? null,
+    backendKind: request.session.device.backendKind ?? null,
+    backendVersion: overrides.backendVersion ?? null,
+    timeoutMs: overrides.timeoutMs ?? request.timeoutMs ?? null,
+    nativeCode: overrides.nativeCode ?? null,
+    optionsOutput: overrides.optionsOutput ?? null,
+    diagnosticOutput: overrides.diagnosticOutput ?? null,
+    details: overrides.details ?? [],
+    diagnostics: overrides.diagnostics ?? request.session.device.diagnostics ?? []
+  }
+});
+
 const validateSession = (
   request: LiveCaptureRequest
 ): LiveCaptureFailure | null => {
@@ -187,6 +228,43 @@ const validateSession = (
   );
 };
 
+const validateDeviceOptionsSession = (
+  request: DeviceOptionsRequest
+): DeviceOptionsFailure | null => {
+  const { session } = request;
+  const details: string[] = [];
+
+  if (session.device.deviceId !== session.deviceId) {
+    details.push("session.device.deviceId must match session.deviceId.");
+  }
+
+  if (session.device.providerKind !== DSLOGIC_PROVIDER_KIND) {
+    details.push(`Expected providerKind ${DSLOGIC_PROVIDER_KIND}.`);
+  }
+
+  if (session.device.backendKind !== DSLOGIC_BACKEND_KIND) {
+    details.push(`Expected backendKind ${DSLOGIC_BACKEND_KIND}.`);
+  }
+
+  if (!session.device.dslogic || session.device.dslogic.family !== "dslogic") {
+    details.push("Accepted device-options sessions must include DSLogic identity details.");
+  } else if (session.device.dslogic.model !== "dslogic-plus") {
+    details.push(`Unsupported DSLogic model ${session.device.dslogic.model}.`);
+  }
+
+  if (details.length === 0) {
+    return null;
+  }
+
+  return buildDeviceOptionsFailure(
+    request,
+    "unsupported-runtime",
+    "validate-session",
+    "Device options request is not compatible with the DSLogic native runtime seam.",
+    { details }
+  );
+};
+
 const toSuccess = (
   request: LiveCaptureRequest,
   artifact: LiveCaptureArtifact,
@@ -219,6 +297,36 @@ const toFailureFromNative = (
     diagnosticOutput: summarizeCaptureStream(failure.diagnosticOutput),
     details: failure.details ?? []
   });
+
+const toDeviceOptionsFailureFromNative = (
+  request: DeviceOptionsRequest,
+  failure: DslogicNativeDeviceOptionsFailure
+): DeviceOptionsFailure =>
+  buildDeviceOptionsFailure(request, failure.kind, failure.phase, failure.message, {
+    backendVersion: failure.backendVersion ?? null,
+    timeoutMs: failure.timeoutMs ?? request.timeoutMs ?? null,
+    nativeCode: failure.nativeCode ?? null,
+    optionsOutput: summarizeCaptureStream(failure.optionsOutput),
+    diagnosticOutput: summarizeCaptureStream(failure.diagnosticOutput),
+    details: failure.details ?? []
+  });
+
+const toDeviceOptionsSuccess = (
+  request: DeviceOptionsRequest,
+  nativeResult: { capabilities: DeviceOptionsSuccess["capabilities"] }
+): DeviceOptionsSuccess => ({
+  ok: true,
+  providerKind: DSLOGIC_PROVIDER_KIND,
+  backendKind: DSLOGIC_BACKEND_KIND,
+  session: request.session,
+  requestedAt: request.requestedAt,
+  capabilities: nativeResult.capabilities
+});
+
+const resolveNativeOptions = (
+  options: InspectDslogicDeviceOptionsOptions
+): DslogicNativeDeviceOptionsBackend =>
+  "nativeOptions" in options ? options.nativeOptions : options.runner;
 
 const resolveNativeCapture = (
   options: CaptureLiveDslogicOptions
@@ -264,6 +372,24 @@ export const captureDslogicLive = async (
   );
 };
 
+export const inspectDslogicDeviceOptions = async (
+  request: DeviceOptionsRequest,
+  options: InspectDslogicDeviceOptionsOptions
+): Promise<DeviceOptionsResult> => {
+  const validationFailure = validateDeviceOptionsSession(request);
+  if (validationFailure) {
+    return validationFailure;
+  }
+
+  const nativeOptions = resolveNativeOptions(options);
+  const nativeResult = await nativeOptions.inspectDeviceOptions(request);
+  if (!nativeResult.ok) {
+    return toDeviceOptionsFailureFromNative(request, nativeResult);
+  }
+
+  return toDeviceOptionsSuccess(request, nativeResult);
+};
+
 export const supportsDslogicLiveCapture = (
   device: Pick<DeviceRecord, "providerKind" | "backendKind">
 ): boolean =>
@@ -277,13 +403,28 @@ export const createDslogicLiveCaptureProvider = (
   liveCapture: (request) => captureDslogicLive(request, { nativeCapture })
 });
 
+export const createDslogicDeviceOptionsProvider = (
+  nativeOptions: DslogicNativeDeviceOptionsBackend
+): DeviceOptionsProvider => ({
+  supportsDevice: supportsDslogicLiveCapture,
+  inspectDeviceOptions: (request) => inspectDslogicDeviceOptions(request, { nativeOptions })
+});
+
 export const createDslogicLiveCaptureRunner = (
   capture: DslogicNativeLiveCaptureBackend["capture"]
 ): DslogicLiveCaptureRunner => createDslogicNativeLiveCaptureBackend(capture);
 
+export const createDslogicDeviceOptionsRunner = (
+  inspectDeviceOptions: DslogicNativeDeviceOptionsBackend["inspectDeviceOptions"]
+): DslogicDeviceOptionsRunner => createDslogicNativeDeviceOptionsBackend(inspectDeviceOptions);
+
 export const createDslogicNativeLiveCapture = (
   capture: DslogicNativeLiveCaptureBackend["capture"]
 ): DslogicNativeLiveCaptureBackend => createDslogicNativeLiveCaptureBackend(capture);
+
+export const createDslogicNativeDeviceOptions = (
+  inspectDeviceOptions: DslogicNativeDeviceOptionsBackend["inspectDeviceOptions"]
+): DslogicNativeDeviceOptionsBackend => createDslogicNativeDeviceOptionsBackend(inspectDeviceOptions);
 
 export const createLiveCaptureRequest = (
   session: LiveCaptureSession,

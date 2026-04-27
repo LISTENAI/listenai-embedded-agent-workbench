@@ -1,4 +1,4 @@
-import type { InventorySnapshot, SnapshotResourceManager } from "@listenai/contracts";
+import type { DeviceOptionsFailure, InventorySnapshot, SnapshotResourceManager } from "@listenai/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createResourceManager } from "../resource-manager.js";
 import { FakeDeviceProvider } from "../testing/fake-device-provider.js";
@@ -1353,7 +1353,7 @@ describe("Hono app routes", () => {
       requestedAt: refreshedAt,
       timeoutMs: 15000
     };
-    const failure = {
+    const failure: DeviceOptionsFailure = {
       ok: false,
       reason: "device-options-failed",
       kind: "native-error",

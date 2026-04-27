@@ -4,7 +4,9 @@ import {
   LIVE_CAPTURE_FAILURE_KINDS,
   LIVE_CAPTURE_FAILURE_PHASES,
   captureDslogicLive,
+  createDslogicDeviceOptionsProvider,
   createDslogicLiveCaptureProvider,
+  createDslogicNativeDeviceOptions,
   createDslogicNativeLiveCapture,
   createLiveCaptureRequest,
   type LiveCaptureFailure,
@@ -135,6 +137,45 @@ describe("DSLogic live capture seam", () => {
         nativeCode: string | null;
       };
     }>();
+  });
+
+  it("creates a provider-dispatched DSLogic native device options adapter", async () => {
+    const request = {
+      session: createSession(2),
+      requestedAt: "2026-03-30T10:00:05.000Z",
+      timeoutMs: 2_000
+    };
+    const nativeOptions = createDslogicNativeDeviceOptions(async (incomingRequest) => ({
+      ok: true,
+      backendVersion: "1.2.2",
+      capabilities: {
+        operations: [{ token: "collect" }],
+        channels: [{ token: "buffer" }],
+        stopConditions: [{ token: "samples" }],
+        filters: [{ token: "none" }],
+        thresholds: [{ token: "1.8v" }]
+      },
+      optionsOutput: { text: "options ready" }
+    }));
+    const deviceOptions = createDslogicDeviceOptionsProvider(nativeOptions);
+
+    expect(deviceOptions.supportsDevice(request.session.device)).toBe(true);
+    const result = await deviceOptions.inspectDeviceOptions(request);
+
+    expect(result).toEqual({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview-cli",
+      session: request.session,
+      requestedAt: "2026-03-30T10:00:05.000Z",
+      capabilities: {
+        operations: [{ token: "collect" }],
+        channels: [{ token: "buffer" }],
+        stopConditions: [{ token: "samples" }],
+        filters: [{ token: "none" }],
+        thresholds: [{ token: "1.8v" }]
+      }
+    });
   });
 
   it("creates a provider-dispatched DSLogic native live capture adapter", async () => {
