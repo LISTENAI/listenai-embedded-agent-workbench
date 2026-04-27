@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AllocationRequest,
+  DeviceOptionsRequest,
   DeviceRecord,
   InventorySnapshot,
   ReleaseRequest,
@@ -403,6 +404,249 @@ describe("HttpResourceManager", () => {
   describe("dispose", () => {
     it("returns 0 when no devices allocated", () => {
       expect(mgr.dispose()).toBe(0);
+    });
+  });
+
+  describe("inspectDeviceOptions", () => {
+    const request: DeviceOptionsRequest = {
+      session: {
+        sessionId: "session-1",
+        deviceId: "logic-ready",
+        ownerSkillId: "skill-a",
+        startedAt: "2026-03-30T10:00:00.000Z",
+        device: readyClassicDevice,
+        sampling: {
+          sampleRateHz: 1_000_000,
+          captureDurationMs: 250,
+          channels: [{ channelId: "D0", label: "CLK" }],
+        },
+      },
+      requestedAt: "2026-03-30T10:00:01.000Z",
+      timeoutMs: 15000,
+    };
+
+    const capabilities = {
+      operations: [
+        {
+          token: "logic",
+          label: "Logic",
+          description: "Logic analyzer capture mode",
+        },
+      ],
+      channels: [{ token: "D0", label: "Channel 0" }],
+      stopConditions: [{ token: "samples", description: "Stop after sample limit" }],
+      filters: [{ token: "none" }],
+      thresholds: [{ token: "1.8v", label: "1.8 V" }],
+    };
+
+    const diagnostics = {
+      phase: "inspect-options",
+      providerKind: "dslogic",
+      backendKind: "dsview-cli",
+      backendVersion: "1.2.2",
+      timeoutMs: 15000,
+      nativeCode: "EOPTIONS",
+      optionsOutput: {
+        kind: "text",
+        byteLength: 13,
+        textLength: 13,
+        preview: "bad options",
+        truncated: false,
+      },
+      diagnosticOutput: null,
+      details: ["runtime rejected the options request"],
+      diagnostics: [
+        {
+          code: "backend-runtime-failed",
+          severity: "error",
+          target: "backend",
+          message: "dsview-cli failed while inspecting options.",
+          backendKind: "dsview-cli",
+          backendVersion: "1.2.2",
+        },
+      ],
+    };
+
+    it("posts to /devices/options and parses capability groups", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities,
+        }),
+      );
+
+      const result = await mgr.inspectDeviceOptions(request);
+
+      expect(result).toEqual({
+        ok: true,
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        session: request.session,
+        requestedAt: request.requestedAt,
+        capabilities,
+      });
+      expect(fetch).toHaveBeenCalledWith(BASE + "/devices/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+    });
+
+    it("round-trips typed device-options failures", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: false,
+          reason: "device-options-failed",
+          kind: "native-error",
+          message: "Could not inspect DSLogic options.",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: null,
+          diagnostics,
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).resolves.toEqual({
+        ok: false,
+        reason: "device-options-failed",
+        kind: "native-error",
+        message: "Could not inspect DSLogic options.",
+        session: request.session,
+        requestedAt: request.requestedAt,
+        capabilities: null,
+        diagnostics,
+      });
+    });
+
+    it("rejects missing capability groups", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: { ...capabilities, thresholds: undefined },
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.capabilities.thresholds",
+      );
+    });
+
+    it("rejects non-string option tokens", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: {
+            ...capabilities,
+            operations: [{ token: 42, label: "Logic" }],
+          },
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.capabilities.operations[0].token",
+      );
+    });
+
+    it("rejects unknown failure literals", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        jsonResponse({
+          ok: false,
+          reason: "unknown-failure",
+          kind: "native-error",
+          message: "Could not inspect DSLogic options.",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: null,
+          diagnostics,
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.reason",
+      );
+
+      fetchSpy.mockResolvedValueOnce(
+        jsonResponse({
+          ok: false,
+          reason: "device-options-failed",
+          kind: "unknown-kind",
+          message: "Could not inspect DSLogic options.",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: null,
+          diagnostics,
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.kind",
+      );
+    });
+
+    it("rejects malformed diagnostics with device-options paths", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: false,
+          reason: "device-options-failed",
+          kind: "native-error",
+          message: "Could not inspect DSLogic options.",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          capabilities: null,
+          diagnostics: {
+            ...diagnostics,
+            diagnostics: [
+              {
+                code: "backend-runtime-failed",
+                severity: "error",
+                target: "backend",
+                message: 99,
+                backendKind: "dsview-cli",
+              },
+            ],
+          },
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.diagnostics.diagnostics[0].message",
+      );
+    });
+
+    it("rejects malformed session devices with device-options paths", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: {
+            ...request.session,
+            device: {
+              ...request.session.device,
+              connectionState: "unknown-connection",
+            },
+          },
+          requestedAt: request.requestedAt,
+          capabilities,
+        }),
+      );
+
+      await expect(mgr.inspectDeviceOptions(request)).rejects.toThrow(
+        "Malformed device options response at root.session.device.connectionState",
+      );
     });
   });
 

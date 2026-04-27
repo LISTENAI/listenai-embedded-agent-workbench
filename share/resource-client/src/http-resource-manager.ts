@@ -209,6 +209,18 @@ const readDeviceOptionsEnum = <T extends string>(
   throw new Error(`Malformed device options response at ${path}`);
 };
 
+const readDeviceOptionsArrayField = <T>(
+  value: unknown,
+  path: string,
+  mapper: (entry: unknown, entryPath: string) => T,
+): T[] => {
+  if (!Array.isArray(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return value.map((entry, index) => mapper(entry, `${path}[${index}]`));
+};
+
 const parseInventoryDiagnostic = (
   value: unknown,
   path: string,
@@ -247,6 +259,64 @@ const parseInventoryDiagnostic = (
   }
   if (value.backendVersion !== undefined) {
     diagnostic.backendVersion = readString(
+      value.backendVersion,
+      `${path}.backendVersion`,
+      true,
+    );
+  }
+
+  return diagnostic;
+};
+
+const parseDeviceOptionsInventoryDiagnostic = (
+  value: unknown,
+  path: string,
+): InventoryDiagnostic => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  const diagnostic: InventoryDiagnostic = {
+    code: readDeviceOptionsEnum(
+      value.code,
+      `${path}.code`,
+      INVENTORY_DIAGNOSTIC_CODES,
+    ) as InventoryDiagnostic["code"],
+    severity: readDeviceOptionsEnum(
+      value.severity,
+      `${path}.severity`,
+      INVENTORY_DIAGNOSTIC_SEVERITIES,
+    ) as InventoryDiagnostic["severity"],
+    target: readDeviceOptionsEnum(
+      value.target,
+      `${path}.target`,
+      INVENTORY_DIAGNOSTIC_TARGETS,
+    ) as InventoryDiagnostic["target"],
+    message: readDeviceOptionsString(value.message, `${path}.message`) as string,
+  };
+
+  if (value.deviceId !== undefined) {
+    diagnostic.deviceId = readDeviceOptionsString(
+      value.deviceId,
+      `${path}.deviceId`,
+    ) as string;
+  }
+  if (value.platform !== undefined) {
+    diagnostic.platform = readDeviceOptionsEnum(
+      value.platform,
+      `${path}.platform`,
+      INVENTORY_PLATFORMS,
+    ) as InventoryDiagnostic["platform"];
+  }
+  if (value.backendKind !== undefined) {
+    diagnostic.backendKind = readDeviceOptionsEnum(
+      value.backendKind,
+      `${path}.backendKind`,
+      INVENTORY_BACKEND_KINDS,
+    ) as InventoryDiagnostic["backendKind"];
+  }
+  if (value.backendVersion !== undefined) {
+    diagnostic.backendVersion = readDeviceOptionsString(
       value.backendVersion,
       `${path}.backendVersion`,
       true,
@@ -357,6 +427,145 @@ const parseDeviceRecord = (value: unknown, path: string): DeviceRecord => {
   }
   if (value.dslogic !== undefined) {
     record.dslogic = parseDslogicIdentity(value.dslogic, `${path}.dslogic`);
+  }
+
+  return record;
+};
+
+const parseDeviceOptionsCanonicalIdentity = (
+  value: unknown,
+  path: string,
+): NonNullable<DeviceRecord["canonicalIdentity"]> => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    providerKind: readDeviceOptionsEnum(
+      value.providerKind,
+      `${path}.providerKind`,
+      INVENTORY_PROVIDER_KINDS,
+    ) as InventoryProviderKind,
+    providerDeviceId: readDeviceOptionsString(
+      value.providerDeviceId,
+      `${path}.providerDeviceId`,
+    ) as string,
+    canonicalKey: readDeviceOptionsString(
+      value.canonicalKey,
+      `${path}.canonicalKey`,
+    ) as string,
+  };
+};
+
+const parseDeviceOptionsDslogicIdentity = (
+  value: unknown,
+  path: string,
+): DslogicDeviceIdentity | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    family: readDeviceOptionsString(
+      value.family,
+      `${path}.family`,
+    ) as DslogicDeviceIdentity["family"],
+    model: readDeviceOptionsString(value.model, `${path}.model`) as string,
+    modelDisplayName: readDeviceOptionsString(
+      value.modelDisplayName,
+      `${path}.modelDisplayName`,
+    ) as string,
+    variant: readDeviceOptionsString(value.variant, `${path}.variant`, true),
+    usbVendorId: readDeviceOptionsString(
+      value.usbVendorId,
+      `${path}.usbVendorId`,
+      true,
+    ),
+    usbProductId: readDeviceOptionsString(
+      value.usbProductId,
+      `${path}.usbProductId`,
+      true,
+    ),
+  };
+};
+
+const parseDeviceOptionsDeviceRecord = (
+  value: unknown,
+  path: string,
+): DeviceRecord => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  const record: DeviceRecord = {
+    deviceId: readDeviceOptionsString(value.deviceId, `${path}.deviceId`) as string,
+    label: readDeviceOptionsString(value.label, `${path}.label`) as string,
+    capabilityType: readDeviceOptionsString(
+      value.capabilityType,
+      `${path}.capabilityType`,
+    ) as string,
+    connectionState: readDeviceOptionsEnum(
+      value.connectionState,
+      `${path}.connectionState`,
+      CONNECTION_STATES,
+    ) as DeviceRecord["connectionState"],
+    allocationState: readDeviceOptionsEnum(
+      value.allocationState,
+      `${path}.allocationState`,
+      ALLOCATION_STATES,
+    ) as DeviceRecord["allocationState"],
+    ownerSkillId: readDeviceOptionsString(
+      value.ownerSkillId,
+      `${path}.ownerSkillId`,
+      true,
+    ),
+    lastSeenAt: readDeviceOptionsString(value.lastSeenAt, `${path}.lastSeenAt`, true),
+    updatedAt: readDeviceOptionsString(value.updatedAt, `${path}.updatedAt`) as string,
+  };
+
+  if (value.readiness !== undefined) {
+    record.readiness = readDeviceOptionsEnum(
+      value.readiness,
+      `${path}.readiness`,
+      DEVICE_READINESS_STATES,
+    ) as DeviceRecord["readiness"];
+  }
+  if (value.diagnostics !== undefined) {
+    record.diagnostics = readDeviceOptionsArrayField(
+      value.diagnostics,
+      `${path}.diagnostics`,
+      parseDeviceOptionsInventoryDiagnostic,
+    );
+  }
+  if (value.providerKind !== undefined) {
+    record.providerKind = readDeviceOptionsEnum(
+      value.providerKind,
+      `${path}.providerKind`,
+      INVENTORY_PROVIDER_KINDS,
+    ) as DeviceRecord["providerKind"];
+  }
+  if (value.backendKind !== undefined) {
+    record.backendKind = readDeviceOptionsEnum(
+      value.backendKind,
+      `${path}.backendKind`,
+      INVENTORY_BACKEND_KINDS,
+    ) as DeviceRecord["backendKind"];
+  }
+  if (value.canonicalIdentity !== undefined) {
+    record.canonicalIdentity = parseDeviceOptionsCanonicalIdentity(
+      value.canonicalIdentity,
+      `${path}.canonicalIdentity`,
+    );
+  }
+  if (value.dslogic !== undefined) {
+    record.dslogic = parseDeviceOptionsDslogicIdentity(
+      value.dslogic,
+      `${path}.dslogic`,
+    );
   }
 
   return record;
@@ -495,6 +704,63 @@ const parseLiveCaptureSamplingConfig = (
       : (() => {
           throw new Error(`Malformed live capture response at ${path}.channels`);
         })(),
+  };
+};
+
+const parseDeviceOptionsChannelSelection = (value: unknown, path: string) => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    channelId: readDeviceOptionsString(value.channelId, `${path}.channelId`) as string,
+    label:
+      value.label === undefined
+        ? undefined
+        : (readDeviceOptionsString(value.label, `${path}.label`) as string),
+  };
+};
+
+const parseDeviceOptionsSamplingConfig = (value: unknown, path: string) => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    sampleRateHz: readDeviceOptionsNumber(
+      value.sampleRateHz,
+      `${path}.sampleRateHz`,
+    ) as number,
+    captureDurationMs: readDeviceOptionsNumber(
+      value.captureDurationMs,
+      `${path}.captureDurationMs`,
+    ) as number,
+    channels: readDeviceOptionsArrayField(
+      value.channels,
+      `${path}.channels`,
+      parseDeviceOptionsChannelSelection,
+    ),
+  };
+};
+
+const parseDeviceOptionsSession = (
+  value: unknown,
+  path: string,
+): LiveCaptureSession => {
+  if (!isObject(value)) {
+    throw new Error(`Malformed device options response at ${path}`);
+  }
+
+  return {
+    sessionId: readDeviceOptionsString(value.sessionId, `${path}.sessionId`) as string,
+    deviceId: readDeviceOptionsString(value.deviceId, `${path}.deviceId`) as string,
+    ownerSkillId: readDeviceOptionsString(
+      value.ownerSkillId,
+      `${path}.ownerSkillId`,
+    ) as string,
+    startedAt: readDeviceOptionsString(value.startedAt, `${path}.startedAt`) as string,
+    device: parseDeviceOptionsDeviceRecord(value.device, `${path}.device`),
+    sampling: parseDeviceOptionsSamplingConfig(value.sampling, `${path}.sampling`),
   };
 };
 
@@ -834,7 +1100,10 @@ const parseDeviceOptionsFailureDiagnosticsValue = (
         })(),
     diagnostics: Array.isArray(value.diagnostics)
       ? value.diagnostics.map((entry, index) =>
-          parseInventoryDiagnostic(entry, `${path}.diagnostics[${index}]`),
+          parseDeviceOptionsInventoryDiagnostic(
+            entry,
+            `${path}.diagnostics[${index}]`,
+          ),
         )
       : (() => {
           throw new Error(`Malformed device options response at ${path}.diagnostics`);
@@ -861,7 +1130,7 @@ const parseDeviceOptionsResult = (value: unknown): DeviceOptionsResult => {
         "root.backendKind",
         INVENTORY_BACKEND_KINDS,
       ) as InventoryBackendKind,
-      session: parseLiveCaptureSession(value.session, "root.session"),
+      session: parseDeviceOptionsSession(value.session, "root.session"),
       requestedAt: readDeviceOptionsString(value.requestedAt, "root.requestedAt") as string,
       capabilities: parseDeviceOptionsCapabilities(
         value.capabilities,
@@ -874,16 +1143,21 @@ const parseDeviceOptionsResult = (value: unknown): DeviceOptionsResult => {
     throw new Error("Malformed device options response at root.capabilities");
   }
 
+  const reason = readDeviceOptionsString(value.reason, "root.reason") as string;
+  if (reason !== "device-options-failed") {
+    throw new Error("Malformed device options response at root.reason");
+  }
+
   return {
     ok: false,
-    reason: readDeviceOptionsString(value.reason, "root.reason") as "device-options-failed",
+    reason,
     kind: readDeviceOptionsEnum(
       value.kind,
       "root.kind",
       DEVICE_OPTIONS_FAILURE_KINDS,
     ) as DeviceOptionsFailureKind,
     message: readDeviceOptionsString(value.message, "root.message") as string,
-    session: parseLiveCaptureSession(value.session, "root.session"),
+    session: parseDeviceOptionsSession(value.session, "root.session"),
     requestedAt: readDeviceOptionsString(value.requestedAt, "root.requestedAt") as string,
     capabilities: null,
     diagnostics: parseDeviceOptionsFailureDiagnosticsValue(

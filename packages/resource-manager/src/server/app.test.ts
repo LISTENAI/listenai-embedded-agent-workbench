@@ -1242,6 +1242,209 @@ describe("Hono app routes", () => {
     expect(body.leaseId).toBe("unknown-lease-id");
   });
 
+  it("POST /devices/options returns capability groups from the resource manager", async () => {
+    const request = {
+      session: {
+        sessionId: "options-session",
+        deviceId: "logic-ready",
+        ownerSkillId: "skill-options",
+        startedAt: refreshedAt,
+        device: dslogicSnapshot.devices[0],
+        sampling: {
+          sampleRateHz: 1_000_000,
+          captureDurationMs: 250,
+          channels: [{ channelId: "D0", label: "CLK" }]
+        }
+      },
+      requestedAt: refreshedAt,
+      timeoutMs: 15000
+    };
+    const capabilities = {
+      operations: [{ token: "logic", label: "Logic" }],
+      channels: [{ token: "D0", label: "Channel 0" }],
+      stopConditions: [{ token: "samples" }],
+      filters: [{ token: "none" }],
+      thresholds: [{ token: "1.8v" }]
+    };
+    const manager: SnapshotResourceManager = {
+      listDevices: async () => [],
+      refreshInventory: async () => [],
+      getInventorySnapshot: async () => dslogicSnapshot,
+      refreshInventorySnapshot: async () => dslogicSnapshot,
+      allocateDevice: async () => ({
+        ok: false,
+        reason: "device-not-found",
+        deviceId: "unused",
+        ownerSkillId: "unused",
+        message: "unused",
+        device: null
+      }),
+      releaseDevice: async () => ({
+        ok: false,
+        reason: "device-not-found",
+        deviceId: "unused",
+        ownerSkillId: "unused",
+        message: "unused",
+        device: null
+      }),
+      inspectDeviceOptions: async (optionsRequest) => ({
+        ok: true,
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        session: optionsRequest.session,
+        requestedAt: optionsRequest.requestedAt,
+        capabilities
+      }),
+      liveCapture: async () => ({
+        ok: false,
+        reason: "capture-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: request.session,
+        requestedAt: request.requestedAt,
+        artifactSummary: null,
+        diagnostics: {
+          phase: "validate-session",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: null,
+          nativeCode: null,
+          captureOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      })
+    };
+    const app = createApp(manager, new LeaseManager());
+
+    const res = await app.request("/devices/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      providerKind: "dslogic",
+      backendKind: "dsview-cli",
+      session: request.session,
+      requestedAt: request.requestedAt,
+      capabilities
+    });
+  });
+
+  it("POST /devices/options round-trips typed resource-manager failures", async () => {
+    const request = {
+      session: {
+        sessionId: "options-session",
+        deviceId: "logic-ready",
+        ownerSkillId: "skill-options",
+        startedAt: refreshedAt,
+        device: dslogicSnapshot.devices[0],
+        sampling: {
+          sampleRateHz: 1_000_000,
+          captureDurationMs: 250,
+          channels: [{ channelId: "D0", label: "CLK" }]
+        }
+      },
+      requestedAt: refreshedAt,
+      timeoutMs: 15000
+    };
+    const failure = {
+      ok: false,
+      reason: "device-options-failed",
+      kind: "native-error",
+      message: "dsview-cli failed while inspecting options.",
+      session: request.session,
+      requestedAt: request.requestedAt,
+      capabilities: null,
+      diagnostics: {
+        phase: "inspect-options",
+        providerKind: "dslogic",
+        backendKind: "dsview-cli",
+        backendVersion: "1.2.2",
+        timeoutMs: 15000,
+        nativeCode: "EOPTIONS",
+        optionsOutput: {
+          kind: "text",
+          byteLength: 13,
+          textLength: 13,
+          preview: "bad options",
+          truncated: false
+        },
+        diagnosticOutput: null,
+        details: ["runtime rejected the options request"],
+        diagnostics: [
+          {
+            code: "backend-runtime-failed",
+            severity: "error",
+            target: "backend",
+            message: "dsview-cli failed while inspecting options.",
+            backendKind: "dsview-cli",
+            backendVersion: "1.2.2"
+          }
+        ]
+      }
+    };
+    const manager: SnapshotResourceManager = {
+      listDevices: async () => [],
+      refreshInventory: async () => [],
+      getInventorySnapshot: async () => dslogicSnapshot,
+      refreshInventorySnapshot: async () => dslogicSnapshot,
+      allocateDevice: async () => ({
+        ok: false,
+        reason: "device-not-found",
+        deviceId: "unused",
+        ownerSkillId: "unused",
+        message: "unused",
+        device: null
+      }),
+      releaseDevice: async () => ({
+        ok: false,
+        reason: "device-not-found",
+        deviceId: "unused",
+        ownerSkillId: "unused",
+        message: "unused",
+        device: null
+      }),
+      inspectDeviceOptions: async () => failure,
+      liveCapture: async () => ({
+        ok: false,
+        reason: "capture-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: request.session,
+        requestedAt: request.requestedAt,
+        artifactSummary: null,
+        diagnostics: {
+          phase: "validate-session",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: null,
+          nativeCode: null,
+          captureOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      })
+    };
+    const app = createApp(manager, new LeaseManager());
+
+    const res = await app.request("/devices/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(failure);
+  });
+
   it("POST /capture/live encodes Uint8Array artifacts and preserves dsview-cli identity", async () => {
     const request = {
       session: {
