@@ -58,6 +58,7 @@ Safety gates:
 
 - `--publish` fails unless `CONFIRM_PUBLISH=publish`.
 - `--publish` fails unless `LPM_ZHUOBIN_TOKEN` or `NPM_TOKEN` is set.
+- The script checks every `package@version` is absent from the target registry before any real publish attempt.
 - Registry config is written only to a temporary npm userconfig.
 - The M003 consumer publish-readiness verifier runs before any package publish attempt.
 - Packages publish in dependency order: contracts, resource-client, resource-manager, skill-logic-analyzer.

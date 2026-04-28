@@ -78,7 +78,7 @@ echo "[publish] Registry: $REGISTRY_URL"
 echo "[publish] Mode: $MODE"
 echo "[publish] Package order: ${PACKAGES[*]}"
 
-node --input-type=module - "${PACKAGES[@]}" <<'NODE'
+PACKAGE_VERSION="$(node --input-type=module - "${PACKAGES[@]}" <<'NODE'
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -99,15 +99,10 @@ for (const pkg of manifests) {
     throw new Error(`${pkg.dir}/package.json name is ${pkg.manifest.name}, expected ${pkg.name}`);
   }
 }
-console.log(`[publish] Version: ${manifests[0].manifest.version}`);
+console.log(manifests[0].manifest.version);
 NODE
-
-if [[ "$RUN_READINESS" != "1" ]]; then
-  echo "[publish] Running consumer publish-readiness verifier"
-  bash scripts/verify-m003-s04.sh
-else
-  echo "[publish] Skipping readiness verifier because LISTENAI_PUBLISH_SKIP_READINESS=1"
-fi
+)"
+echo "[publish] Version: $PACKAGE_VERSION"
 
 printf '@listenai:registry=%s\n' "$REGISTRY_URL" > "$NPM_USERCONFIG"
 REGISTRY_AUTH_HOST="${REGISTRY_URL#http://}"
@@ -124,6 +119,32 @@ elif [[ -n "${NPM_TOKEN:-}" ]]; then
 fi
 if [[ -n "${NPM_TOKEN:-}" ]]; then
   printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" >> "$NPM_USERCONFIG"
+fi
+
+if [[ "$MODE" == "publish" ]]; then
+  echo "[publish] Checking registry for existing $PACKAGE_VERSION packages"
+  for entry in "${PACKAGES[@]}"; do
+    package_name="${entry%%:*}"
+    if npm view "${package_name}@${PACKAGE_VERSION}" version --registry "$REGISTRY_URL" --userconfig "$NPM_USERCONFIG" >/tmp/listenai-publish-view.out 2>&1; then
+      echo "[publish] Refusing real publish: ${package_name}@${PACKAGE_VERSION} already exists in $REGISTRY_URL" >&2
+      rm -f /tmp/listenai-publish-view.out
+      exit 2
+    fi
+    if ! grep -Eqi "E404|404|not_found|could not be found" /tmp/listenai-publish-view.out; then
+      echo "[publish] Could not confirm ${package_name}@${PACKAGE_VERSION} is absent from $REGISTRY_URL" >&2
+      cat /tmp/listenai-publish-view.out >&2
+      rm -f /tmp/listenai-publish-view.out
+      exit 2
+    fi
+  done
+  rm -f /tmp/listenai-publish-view.out
+fi
+
+if [[ "$RUN_READINESS" != "1" ]]; then
+  echo "[publish] Running consumer publish-readiness verifier"
+  bash scripts/verify-m003-s04.sh
+else
+  echo "[publish] Skipping readiness verifier because LISTENAI_PUBLISH_SKIP_READINESS=1"
 fi
 
 pack_package() {
