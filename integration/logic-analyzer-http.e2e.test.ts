@@ -8,6 +8,9 @@ import type {
   LiveCaptureResult,
 } from "@listenai/eaw-contracts";
 import {
+  type CaptureDecodeProvider,
+  type DecoderCapabilityProvider,
+  type DeviceProvider,
   FakeDeviceProvider,
   LeaseManager,
   createDslogicDeviceOptionsRunner,
@@ -65,6 +68,57 @@ const fixtureCaptureTuning = {
   stop: "samples",
   filter: "none",
   threshold: "1.8v",
+} as const;
+
+const uartDecoderCapability = {
+  decoderId: "1:uart",
+  label: "UART",
+  description: "Generic UART protocol decoder exposed through dsview-cli.",
+  requiredChannels: [{ id: "rx", label: "RX" }],
+  optionalChannels: [],
+  options: [
+    {
+      id: "baudrate",
+      label: "Baud rate",
+      valueType: "number",
+      required: true,
+      values: [921600],
+    },
+  ],
+} as const;
+
+const uartDecodeArtifactSummary = {
+  sourceName: "logic-1-uart.vcd",
+  formatHint: "dsview-vcd",
+  mediaType: "text/x-vcd",
+  capturedAt: captureRequestedAt,
+  byteLength: null,
+  textLength: fixtureVcdText.length,
+  hasText: true,
+} as const;
+
+const uartDecodeReport = {
+  decoderId: "1:uart",
+  annotations: [
+    {
+      startSample: 4,
+      endSample: 32,
+      channel: "rx",
+      text: "0x55",
+    },
+  ],
+  rows: [
+    {
+      timestampNs: 1200,
+      channel: "rx",
+      value: "0x55",
+      text: "U",
+    },
+  ],
+  raw: {
+    decoderId: "1:uart",
+    rows: [{ value: "0x55", text: "U" }],
+  },
 } as const;
 
 interface ServerState {
@@ -136,6 +190,10 @@ function createReadyInventorySnapshot(
     diagnostics: [],
     ...overrides,
   };
+}
+
+function supportsDslogicRuntime(device: DeviceRecord): boolean {
+  return device.providerKind === "dslogic" && device.backendKind === "dsview-cli";
 }
 
 function createBackendMissingSnapshot(): InventorySnapshot {
@@ -286,12 +344,22 @@ async function withLiveServer(
   initialSnapshot: InventorySnapshot,
   run: (context: { url: string; provider: FakeDeviceProvider }) => Promise<void>,
   options: {
+    decoderCapabilities?: DecoderCapabilityProvider;
+    captureDecode?: CaptureDecodeProvider;
     deviceOptionsRunner?: ReturnType<typeof createDslogicDeviceOptionsRunner>;
     liveCaptureRunner?: ReturnType<typeof createDslogicLiveCaptureRunner>;
   } = {},
 ): Promise<void> {
   const provider = new FakeDeviceProvider(initialSnapshot);
-  const manager = createResourceManager(provider, {
+  const managerProvider: DeviceProvider = {
+    listInventorySnapshot: () => provider.listInventorySnapshot(),
+    listConnectedDevices: () => provider.listConnectedDevices(),
+    deviceOptions: provider.deviceOptions,
+    decoderCapabilities: options.decoderCapabilities ?? provider.decoderCapabilities,
+    captureDecode: options.captureDecode ?? provider.captureDecode,
+    liveCapture: provider.liveCapture,
+  };
+  const manager = createResourceManager(managerProvider, {
     deviceOptionsRunner: options.deviceOptionsRunner,
     liveCaptureRunner: options.liveCaptureRunner,
   });
@@ -507,6 +575,276 @@ describe("logic-analyzer live HTTP workflow", () => {
         });
       },
       { deviceOptionsRunner, liveCaptureRunner },
+    );
+  });
+
+  it("proves connected UART capture-decode over HTTP without live waveform capture", async () => {
+    const events: string[] = [];
+    let capabilityRequestCount = 0;
+    let captureDecodeRequestCount = 0;
+    let liveCaptureCount = 0;
+
+    const decoderCapabilities: DecoderCapabilityProvider = {
+      supportsDevice: supportsDslogicRuntime,
+      listDecoderCapabilities: async (request) => {
+        capabilityRequestCount += 1;
+        events.push("decoder-capabilities");
+        expect(request).toMatchObject({
+          deviceId: "logic-1",
+          requestedAt: captureRequestedAt,
+          timeoutMs: 1500,
+        });
+
+        return {
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: "1.2.2",
+          deviceId: request.deviceId,
+          requestedAt: request.requestedAt,
+          decoders: [uartDecoderCapability],
+        };
+      },
+    };
+
+    const captureDecode: CaptureDecodeProvider = {
+      supportsDevice: supportsDslogicRuntime,
+      captureDecode: async (request) => {
+        captureDecodeRequestCount += 1;
+        events.push("capture-decode");
+        expect(request.session).toMatchObject({
+          sessionId: "session-uart",
+          deviceId: "logic-1",
+          ownerSkillId: "logic-analyzer",
+          device: {
+            deviceId: "logic-1",
+            allocationState: "allocated",
+            ownerSkillId: "logic-analyzer",
+            providerKind: "dslogic",
+            backendKind: "dsview-cli",
+          },
+        });
+        expect(request.captureTuning).toEqual(fixtureCaptureTuning);
+        expect(request.decode).toEqual({
+          decoderId: "1:uart",
+          channelMappings: { rx: "D0" },
+          decoderOptions: { baudrate: 921600 },
+        });
+
+        return {
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: request.session,
+          requestedAt: request.requestedAt,
+          artifactSummary: uartDecodeArtifactSummary,
+          auxiliaryArtifactSummaries: [
+            {
+              sourceName: "logic-1-uart.decoder.json",
+              formatHint: "decoder-report",
+              mediaType: "application/json",
+              capturedAt: request.requestedAt,
+              byteLength: null,
+              textLength: JSON.stringify(uartDecodeReport.raw).length,
+              hasText: true,
+            },
+          ],
+          decode: uartDecodeReport,
+        };
+      },
+    };
+
+    const liveCaptureRunner = createDslogicLiveCaptureRunner(async () => {
+      liveCaptureCount += 1;
+      throw new Error("Connected UART capture-decode must not use live waveform capture.");
+    });
+
+    await withLiveServer(
+      createReadyInventorySnapshot(),
+      async ({ url }) => {
+        const resourceManager = new HttpResourceManager(url);
+        managersToDispose.add(resourceManager);
+        const sessionSkill = createLogicAnalyzerSkill(resourceManager, {
+          createSessionId: () => "session-uart",
+        });
+
+        const startResult = await sessionSkill.startSession(createSessionRequest(allocatedAt));
+        expect(startResult).toMatchObject({
+          ok: true,
+          session: {
+            sessionId: "session-uart",
+            deviceId: "logic-1",
+            ownerSkillId: "logic-analyzer",
+          },
+        });
+        expect(startResult.ok).toBe(true);
+        if (!startResult.ok) {
+          return;
+        }
+
+        const capabilitiesResult = await resourceManager.listDecoderCapabilities({
+          deviceId: startResult.session.deviceId,
+          requestedAt: captureRequestedAt,
+          timeoutMs: 1500,
+        });
+        expect(capabilitiesResult).toMatchObject({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: "1.2.2",
+          deviceId: "logic-1",
+          requestedAt: captureRequestedAt,
+        });
+        expect(capabilitiesResult.ok).toBe(true);
+        if (!capabilitiesResult.ok) {
+          return;
+        }
+        expect(capabilitiesResult.decoders).toContainEqual(uartDecoderCapability);
+        const uartCapability = capabilitiesResult.decoders.find(
+          (decoder) => decoder.decoderId === "1:uart",
+        );
+        expect(uartCapability).toMatchObject({
+          decoderId: "1:uart",
+          requiredChannels: [{ id: "rx" }],
+          options: [{ id: "baudrate", valueType: "number", values: [921600] }],
+        });
+
+        const decodeRequest = {
+          session: startResult.session,
+          requestedAt: captureRequestedAt,
+          timeoutMs: 1500,
+          captureTuning: fixtureCaptureTuning,
+          decode: {
+            decoderId: "1:uart",
+            channelMappings: { rx: "D0" },
+            decoderOptions: { baudrate: 921600 },
+          },
+        };
+        const decodeResult = await resourceManager.captureDecode(decodeRequest);
+
+        expect(decodeResult).toMatchObject({
+          ok: true,
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          session: {
+            sessionId: "session-uart",
+            deviceId: "logic-1",
+            ownerSkillId: "logic-analyzer",
+          },
+          requestedAt: captureRequestedAt,
+          artifactSummary: {
+            sourceName: "logic-1-uart.vcd",
+            formatHint: "dsview-vcd",
+            mediaType: "text/x-vcd",
+            hasText: true,
+          },
+          auxiliaryArtifactSummaries: [
+            expect.objectContaining({
+              sourceName: "logic-1-uart.decoder.json",
+              formatHint: "decoder-report",
+              hasText: true,
+            }),
+          ],
+          decode: {
+            decoderId: "1:uart",
+            rows: [
+              {
+                timestampNs: 1200,
+                channel: "rx",
+                value: "0x55",
+                text: "U",
+              },
+            ],
+            annotations: [
+              {
+                startSample: 4,
+                endSample: 32,
+                channel: "rx",
+                text: "0x55",
+              },
+            ],
+          },
+        });
+        expect(decodeResult.ok).toBe(true);
+        if (!decodeResult.ok) {
+          return;
+        }
+        expect(decodeResult.decode.raw).toEqual(uartDecodeReport.raw);
+
+        const unavailableResult = await resourceManager.captureDecode({
+          ...decodeRequest,
+          decode: {
+            ...decodeRequest.decode,
+            decoderId: "1:not-present",
+          },
+        });
+        expect(unavailableResult).toMatchObject({
+          ok: false,
+          reason: "capture-decode-failed",
+          kind: "decode-failed",
+          message: "Decoder 1:not-present is not available for device logic-1.",
+          session: {
+            sessionId: "session-uart",
+            deviceId: "logic-1",
+            ownerSkillId: "logic-analyzer",
+          },
+          artifactSummary: null,
+          decode: null,
+          diagnostics: {
+            phase: "decode-validation",
+            providerKind: "dslogic",
+            backendKind: "dsview-cli",
+            backendVersion: "1.2.2",
+            timeoutMs: 1500,
+            details: [
+              "Available decoder ids: 1:uart.",
+              "Requested channel mapping rx -> D0 and baudrate 921600.",
+            ],
+          },
+        });
+
+        expect(events).toEqual([
+          "decoder-capabilities",
+          "decoder-capabilities",
+          "capture-decode",
+          "decoder-capabilities",
+        ]);
+        expect(capabilityRequestCount).toBe(3);
+        expect(captureDecodeRequestCount).toBe(1);
+        expect(liveCaptureCount).toBe(0);
+
+        const allocatedState = await getServerState(url);
+        expect(allocatedState.devices).toEqual([
+          expect.objectContaining({
+            deviceId: "logic-1",
+            allocationState: "allocated",
+            ownerSkillId: "logic-analyzer",
+          }),
+        ]);
+        expect(allocatedState.leases).toEqual([
+          expect.objectContaining({
+            deviceId: "logic-1",
+            ownerSkillId: "logic-analyzer",
+            leaseId: resourceManager.getLeaseId("logic-1"),
+          }),
+        ]);
+
+        const endResult = await sessionSkill.endSession({
+          sessionId: startResult.session.sessionId,
+          deviceId: startResult.session.deviceId,
+          ownerSkillId: startResult.session.ownerSkillId,
+          endedAt: releasedAt,
+        });
+        expect(endResult).toMatchObject({
+          ok: true,
+          device: {
+            deviceId: "logic-1",
+            allocationState: "free",
+            ownerSkillId: null,
+          },
+        });
+      },
+      { decoderCapabilities, captureDecode, liveCaptureRunner },
     );
   });
 
