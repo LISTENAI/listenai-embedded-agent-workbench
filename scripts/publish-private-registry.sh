@@ -3,6 +3,7 @@ set -euo pipefail
 
 REGISTRY_URL="${LISTENAI_NPM_REGISTRY_URL:-https://registry-lpm.listenai.com}"
 MODE="${LISTENAI_PUBLISH_MODE:-dry-run}"
+AUTH_MODE="${LISTENAI_NPM_AUTH_MODE:-password}"
 RUN_READINESS="${LISTENAI_PUBLISH_SKIP_READINESS:-0}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
@@ -28,7 +29,8 @@ Environment:
   LPM_PASSWORD_BASE64         Private registry _password value for --publish.
   LPM_USERNAME                Private registry username for --publish.
   LPM_EMAIL                   Private registry email for --publish.
-  LPM_ADMIN_TOKEN             Optional private registry auth token fallback for --publish.
+  LPM_ADMIN_TOKEN             Private registry auth token for token-mode --publish.
+  LISTENAI_NPM_AUTH_MODE      Registry auth mode: password or token. Defaults to password.
   CONFIRM_PUBLISH             Must be exactly "publish" for --publish.
   LISTENAI_PUBLISH_SKIP_READINESS=1  Skip scripts/verify-m003-s04.sh for focused tests only.
 EOF
@@ -60,6 +62,10 @@ if [[ "$MODE" != "dry-run" && "$MODE" != "publish" ]]; then
   echo "[publish] LISTENAI_PUBLISH_MODE must be dry-run or publish, got '$MODE'" >&2
   exit 2
 fi
+if [[ "$AUTH_MODE" != "password" && "$AUTH_MODE" != "token" ]]; then
+  echo "[publish] LISTENAI_NPM_AUTH_MODE must be password or token, got '$AUTH_MODE'" >&2
+  exit 2
+fi
 
 if [[ "$MODE" == "publish" ]]; then
   if [[ "${CONFIRM_PUBLISH:-}" != "publish" ]]; then
@@ -67,16 +73,13 @@ if [[ "$MODE" == "publish" ]]; then
     exit 2
   fi
 
-  password_auth_fields=()
-  [[ -n "${LPM_PASSWORD_BASE64:-}" ]] && password_auth_fields+=("LPM_PASSWORD_BASE64")
-  [[ -n "${LPM_USERNAME:-}" ]] && password_auth_fields+=("LPM_USERNAME")
-  [[ -n "${LPM_EMAIL:-}" ]] && password_auth_fields+=("LPM_EMAIL")
-  if [[ ${#password_auth_fields[@]} -gt 0 && ${#password_auth_fields[@]} -lt 3 ]]; then
-    echo "[publish] Refusing real publish: LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL are required together." >&2
-    exit 2
-  fi
-  if [[ ${#password_auth_fields[@]} -eq 0 && -z "${LPM_ADMIN_TOKEN:-}" ]]; then
-    echo "[publish] Refusing real publish: provide LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL, or LPM_ADMIN_TOKEN." >&2
+  if [[ "$AUTH_MODE" == "password" ]]; then
+    if [[ -z "${LPM_PASSWORD_BASE64:-}" || -z "${LPM_USERNAME:-}" || -z "${LPM_EMAIL:-}" ]]; then
+      echo "[publish] Refusing real publish: password auth requires LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL." >&2
+      exit 2
+    fi
+  elif [[ -z "${LPM_ADMIN_TOKEN:-}" ]]; then
+    echo "[publish] Refusing real publish: token auth requires LPM_ADMIN_TOKEN." >&2
     exit 2
   fi
 fi
@@ -85,6 +88,7 @@ cd "$ROOT_DIR"
 
 echo "[publish] Registry: $REGISTRY_URL"
 echo "[publish] Mode: $MODE"
+echo "[publish] Auth mode: $AUTH_MODE"
 echo "[publish] Package order: ${PACKAGES[*]}"
 
 PACKAGE_VERSION="$(node --input-type=module - "${PACKAGES[@]}" <<'NODE'
