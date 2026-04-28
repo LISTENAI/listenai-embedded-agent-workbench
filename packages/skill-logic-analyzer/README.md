@@ -119,11 +119,108 @@ Use one of these exports from the package root:
 
 Do not deep-import internal modules from host code.
 
-## Request modes
+## Connected protocol-log capture+decode through resource-manager
 
-Send one packaged request object in one of two modes.
+Use this path when the user asks for a connected protocol log, such as "capture and decode UART from the attached DSLogic device." Resource-manager owns the ready-device/session check, the live capture, and the decoder runtime. The host should use the package-facing HTTP client from `@listenai/eaw-resource-client`, not direct `dsview-cli capture`, for connected capture+decode.
 
-Offline artifact mode keeps existing callers working and may omit `mode` or set `mode: "artifact"` explicitly:
+The HTTP route behind this client call is `POST /capture/decode`. Hosts should keep the returned `phase`, `kind`, `message`, `session`, backend identity, artifact summary, and decode summary intact when surfacing failures.
+
+```ts
+import { HttpResourceManager } from "@listenai/eaw-resource-client";
+import { createLogicAnalyzerSkill } from "@listenai/eaw-skill-logic-analyzer";
+
+const resourceManager = new HttpResourceManager("http://127.0.0.1:8718");
+const sessionSkill = createLogicAnalyzerSkill(resourceManager, {
+  createSessionId: () => `logic-analyzer-${Date.now()}`
+});
+
+const requestedAt = new Date().toISOString();
+const requestedDecoderId = "1:uart";
+const startResult = await sessionSkill.startSession({
+  deviceId: "logic-1",
+  ownerSkillId: "logic-analyzer",
+  requestedAt,
+  sampling: {
+    sampleRateHz: 1_000_000,
+    captureDurationMs: 10,
+    channels: [{ channelId: "D0", label: "UART RX" }]
+  },
+  analysis: {
+    focusChannelIds: ["D0"],
+    edgePolicy: "all",
+    includePulseWidths: true,
+    timeReference: "capture-start"
+  }
+});
+
+if (!startResult.ok) {
+  throw new Error(`No ready resource-manager session: ${startResult.reason}`);
+}
+
+const capabilitiesResult = await resourceManager.listDecoderCapabilities({
+  deviceId: startResult.session.deviceId,
+  requestedAt,
+  timeoutMs: 1500
+});
+
+if (!capabilitiesResult.ok) {
+  throw new Error(
+    `Decoder capabilities failed during ${capabilitiesResult.diagnostics.phase}: ${capabilitiesResult.message}`
+  );
+}
+
+const uartCapability = capabilitiesResult.decoders.find(
+  (decoder) => decoder.decoderId === requestedDecoderId
+);
+
+if (!uartCapability) {
+  throw new Error(
+    `Decoder ${requestedDecoderId} is unavailable; available decoders: ${capabilitiesResult.decoders
+      .map((decoder) => decoder.decoderId)
+      .join(", ")}`
+  );
+}
+
+const decodeResult = await resourceManager.captureDecode({
+  session: startResult.session,
+  requestedAt,
+  timeoutMs: 1500,
+  captureTuning: {
+    operation: "collect",
+    channel: "buffer",
+    stop: "samples",
+    filter: "none",
+    threshold: "1.8v"
+  },
+  decode: {
+    decoderId: requestedDecoderId,
+    channelMappings: { rx: "D0" },
+    decoderOptions: { baudrate: 921600 }
+  }
+});
+
+if (!decodeResult.ok) {
+  const phase = decodeResult.diagnostics.phase;
+
+  throw new Error(
+    `captureDecode failed during ${phase} (${decodeResult.kind}): ${decodeResult.message}`
+  );
+}
+
+const hostOutput = {
+  decoderId: decodeResult.decode.decoderId,
+  rows: decodeResult.decode.rows,
+  annotations: decodeResult.decode.annotations,
+  artifact: decodeResult.artifactSummary,
+  auxiliaryArtifacts: decodeResult.auxiliaryArtifactSummaries ?? []
+};
+```
+
+Fail closed when resource-manager is unavailable, the device/session is not ready, the requested decoder capability is missing, or `captureDecode()` returns `ok: false`. Malformed HTTP payloads should remain transport/parser errors from `HttpResourceManager` rather than being rewritten into a successful host output. Only write user-visible decoded rows or annotations after the typed `ok: true` branch.
+
+## Offline artifact decode through the skill package
+
+Use this path when the user supplies an existing capture artifact, fixture, or saved DSView/VCD file. Offline artifact mode keeps existing callers working and may omit `mode` or set `mode: "artifact"` explicitly:
 
 ```ts
 import {
@@ -195,7 +292,7 @@ The `decode` section is optional and is currently an offline, fixture-backed con
 
 Do not use protocol decode as a replacement for waveform analysis. Decode output is additive: successful offline decode results still include the normalized capture and waveform `analysis`, then add a `decode` report with annotations, rows, command diagnostics, artifact summary, and temp cleanup status. Resource-manager remains the live capture authority; protocol decode does not allocate hardware or supersede the live `captureSession` path.
 
-Live mode starts a session, captures through the shared manager/client seam, and returns the nested `captureSession` payload on success:
+Live waveform mode starts a session, captures a waveform through the shared manager/client seam, and returns the nested `captureSession` payload on success. Use `HttpResourceManager.captureDecode()` instead when the user requested connected protocol-log capture+decode:
 
 ```ts
 const liveRequest: GenericLogicAnalyzerRequest = {

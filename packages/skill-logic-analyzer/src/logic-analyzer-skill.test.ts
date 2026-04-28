@@ -1243,6 +1243,12 @@ describe("logic analyzer skill", () => {
           }
         };
       },
+      async listDecoderCapabilities() {
+        throw new Error("unused");
+      },
+      async captureDecode() {
+        throw new Error("unused");
+      },
       async liveCapture() {
         return {
           ok: true,

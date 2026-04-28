@@ -26,6 +26,43 @@ const rootReadmePath = resolve(repoRoot, "README.md");
 const expectedAssetKeys: readonly SkillAssetKey[] = ["skillDescriptor", "readme"];
 const legacySkillDir = ["skills", "logic-analyzer"].join("/");
 
+const requiredConnectedCaptureDecodeMarkers = [
+  "HttpResourceManager",
+  "listDecoderCapabilities",
+  "captureDecode",
+  "/capture/decode",
+  "1:uart"
+] as const;
+
+const forbiddenDirectLiveCapturePatterns = [
+  /\b(?:run|invoke|execute|call|use|shell out to)\s+`?dsview-cli\s+capture\b/i,
+  /\bdsview-cli\s+capture\b[^.\n]*(?:live|connected|UART|protocol-log|protocol log)/i,
+  /(?:live|connected|UART|protocol-log|protocol log)[^.\n]*\bdsview-cli\s+capture\b/i
+] as const;
+
+const negatedDirectCaptureGuidancePattern =
+  /(?:do not|don't|never|not|instead of|rather than)[^.\n]*\bdsview-cli\s+capture\b|\bdsview-cli\s+capture\b[^.\n]*(?:instead of|rather than)/i;
+
+const assertNoDirectLiveCaptureGuidance = (assetName: string, content: string) => {
+  const sentences = content.split(/(?<=[.!?])\s+|\n+/u).filter(Boolean);
+
+  for (const sentence of sentences) {
+    if (negatedDirectCaptureGuidancePattern.test(sentence)) {
+      continue;
+    }
+
+    for (const pattern of forbiddenDirectLiveCapturePatterns) {
+      const match = sentence.match(pattern);
+
+      if (match) {
+        throw new Error(
+          `${assetName} contains forbidden direct live dsview-cli capture guidance: "${match[0]}".`
+        );
+      }
+    }
+  }
+};
+
 const assertPackageRelativeAssetPath = (
   key: SkillAssetKey,
   metadata: SkillPackageMetadata
@@ -116,13 +153,63 @@ describe("skill package asset contract", () => {
     expect(packageSkill).toContain("@listenai/eaw-skill-logic-analyzer");
     expect(packageSkill).toContain("treat the package-owned documentation and exports as the source of truth");
     expect(packageSkill).toContain("optional offline protocol decode");
-    expect(packageSkill).toContain("Resource-manager remains responsible for hardware allocation and live capture");
+    expect(packageSkill).toContain("Resource-manager remains responsible for hardware allocation");
     expect(packageSkill).not.toContain(`${legacySkillDir}/`);
 
     expect(rootReadme).toContain("packages/skill-logic-analyzer/README.md");
-    expect(rootReadme).toContain("This README is intentionally user-facing.");
+    expect(rootReadme).toContain("ListenAI Embedded Agent Workbench");
     expect(rootReadme).toContain("CONTRIBUTING.md");
     expect(rootReadme).not.toContain(`./${legacySkillDir}/README.md`);
+  });
+
+  it("documents connected protocol-log capture-decode through resource-manager", () => {
+    const packageReadme = readFileSync(packageReadmePath, "utf8");
+    const packageSkill = readFileSync(packageSkillPath, "utf8");
+    const combinedAssets = `${packageReadme}
+${packageSkill}`;
+
+    for (const marker of requiredConnectedCaptureDecodeMarkers) {
+      expect(combinedAssets, `Missing connected capture-decode marker ${marker}.`).toContain(marker);
+    }
+
+    expect(packageReadme).toContain('from "@listenai/eaw-resource-client"');
+    expect(packageReadme).toContain("resourceManager.listDecoderCapabilities");
+    expect(packageReadme).toContain("resourceManager.captureDecode");
+    expect(packageReadme).toContain("decodeResult.diagnostics.phase");
+    expect(packageReadme).toContain("decodeResult.decode.rows");
+    expect(packageReadme).toContain("decodeResult.decode.annotations");
+    expect(packageSkill).toContain("resource-manager owns connected capture+decode");
+    expect(packageSkill).toContain("fail closed");
+    expect(packageSkill).toContain("offline artifact-only");
+  });
+
+  it("rejects direct live dsview-cli capture instructions while allowing offline decode wording", () => {
+    const packageReadme = readFileSync(packageReadmePath, "utf8");
+    const packageSkill = readFileSync(packageSkillPath, "utf8");
+
+    expect(() => assertNoDirectLiveCaptureGuidance("README.md", packageReadme)).not.toThrow();
+    expect(() => assertNoDirectLiveCaptureGuidance("SKILL.md", packageSkill)).not.toThrow();
+    expect(packageReadme).toContain("dsview-cli decode run");
+    expect(packageSkill).toContain("dsview-cli decode run");
+
+    expect(() =>
+      assertNoDirectLiveCaptureGuidance(
+        "fixture",
+        "For a connected UART protocol log, run dsview-cli capture and then decode it."
+      )
+    ).toThrowError(/forbidden direct live dsview-cli capture guidance/);
+    expect(() =>
+      assertNoDirectLiveCaptureGuidance(
+        "fixture",
+        "The runtime diagnostic string 'dsview-cli capture timed out' is allowed when it reports a historical failure."
+      )
+    ).not.toThrow();
+    expect(() =>
+      assertNoDirectLiveCaptureGuidance(
+        "fixture",
+        "For an offline artifact, dsview-cli decode run may decode a saved VCD fixture."
+      )
+    ).not.toThrow();
   });
 
   it("fails loudly when a metadata key is missing", () => {
