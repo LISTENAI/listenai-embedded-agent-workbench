@@ -32,7 +32,7 @@ import {
   type ReleaseRequest,
   type ReleaseResult,
   type SnapshotResourceManager
-} from "../../../share/contracts/src/index.js";
+} from "@listenai/eaw-contracts";
 import type { DeviceProvider } from "./device-provider.js";
 import {
   createDslogicLiveCaptureRunner,
@@ -1748,6 +1748,30 @@ describe("in-memory resource manager decoder orchestration", () => {
       },
       async listConnectedDevices() {
         return [];
+      },
+      decoderCapabilities: {
+        supportsDevice() {
+          return true;
+        },
+        async listDecoderCapabilities(request) {
+          return {
+            ok: true,
+            providerKind: "dslogic",
+            backendKind: "dsview-cli",
+            backendVersion: "1.2.2",
+            deviceId: request.deviceId,
+            requestedAt: request.requestedAt,
+            decoders: [
+              {
+                decoderId: "1:uart",
+                label: "UART",
+                requiredChannels: [{ id: "rx", label: "RX" }],
+                optionalChannels: [],
+                options: []
+              }
+            ]
+          };
+        }
       },
       captureDecode: {
         supportsDevice() {

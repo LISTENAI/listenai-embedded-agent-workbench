@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type {
   AllocationRequest,
+  CaptureDecodeRequest,
   DashboardSnapshot,
+  DecoderCapabilitiesRequest,
   DeviceOptionsRequest,
   HeartbeatRequest,
   LiveCaptureArtifact,
@@ -329,6 +331,18 @@ export function createApp(
   app.post("/devices/options", async (c) => {
     const body = await c.req.json<DeviceOptionsRequest>();
     const result = await manager.inspectDeviceOptions(body);
+    return c.json(result, 200);
+  });
+
+  app.post("/decoders/capabilities", async (c) => {
+    const body = await c.req.json<DecoderCapabilitiesRequest>();
+    const result = await manager.listDecoderCapabilities(body);
+    return c.json(result, 200);
+  });
+
+  app.post("/capture/decode", async (c) => {
+    const body = await c.req.json<CaptureDecodeRequest>();
+    const result = await manager.captureDecode(body);
     return c.json(result, 200);
   });
 

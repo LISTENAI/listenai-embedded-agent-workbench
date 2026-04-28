@@ -1,5 +1,11 @@
 import type {
   BackendReadinessRecord,
+  CaptureDecodeFailure,
+  CaptureDecodeRequest,
+  CaptureDecodeResult,
+  DecoderCapabilitiesFailure,
+  DecoderCapabilitiesRequest,
+  DecoderCapabilitiesResult,
   DeviceOptionsFailure,
   DeviceOptionsRequest,
   DeviceOptionsResult,
@@ -12,6 +18,8 @@ import type {
   LiveCaptureResult
 } from "@listenai/eaw-contracts";
 import type {
+  CaptureDecodeProvider,
+  DecoderCapabilityProvider,
   DeviceOptionsProvider,
   DeviceProvider,
   DiscoveredDevice,
@@ -174,6 +182,62 @@ const buildUnsupportedFakeOptions = (
   }
 });
 
+const buildUnsupportedFakeDecoderCapabilities = (
+  request: DecoderCapabilitiesRequest
+): DecoderCapabilitiesFailure => ({
+  ok: false,
+  reason: "decoder-capabilities-failed",
+  kind: "unsupported-runtime",
+  message: "Decoder capabilities are not supported by the fake provider/backend.",
+  deviceId: request.deviceId,
+  requestedAt: request.requestedAt,
+  decoders: null,
+  diagnostics: {
+    phase: "prepare-runtime",
+    providerKind: "fake",
+    backendKind: "fake",
+    backendVersion: null,
+    timeoutMs: request.timeoutMs ?? null,
+    nativeCode: null,
+    decoderOutput: null,
+    diagnosticOutput: null,
+    details: [
+      "Fake provider inventory can drive allocation flows but does not implement decoder capability lookup.",
+      "Use a fixture-backed decoder provider or the DSLogic provider/backend to exercise decoder capabilities."
+    ],
+    diagnostics: []
+  }
+});
+
+const buildUnsupportedFakeCaptureDecode = (
+  request: CaptureDecodeRequest
+): CaptureDecodeFailure => ({
+  ok: false,
+  reason: "capture-decode-failed",
+  kind: "unsupported-runtime",
+  message: "Capture-decode is not supported by the fake provider/backend.",
+  session: request.session,
+  requestedAt: request.requestedAt,
+  artifactSummary: null,
+  decode: null,
+  diagnostics: {
+    phase: "prepare-runtime",
+    providerKind: request.session.device.providerKind ?? null,
+    backendKind: request.session.device.backendKind ?? null,
+    backendVersion: null,
+    timeoutMs: request.timeoutMs ?? null,
+    nativeCode: null,
+    captureOutput: null,
+    decoderOutput: null,
+    diagnosticOutput: null,
+    details: [
+      "Fake provider inventory can drive allocation flows but does not implement capture-decode orchestration.",
+      "Use a fixture-backed decoder provider or the DSLogic provider/backend to exercise capture-decode."
+    ],
+    diagnostics: request.session.device.diagnostics ?? []
+  }
+});
+
 const buildUnsupportedFakeCapture = (
   request: LiveCaptureRequest
 ): LiveCaptureFailure => ({
@@ -207,6 +271,18 @@ const fakeDeviceOptionsProvider: DeviceOptionsProvider = {
     buildUnsupportedFakeOptions(request)
 };
 
+const fakeDecoderCapabilityProvider: DecoderCapabilityProvider = {
+  supportsDevice: supportsFakeRuntime,
+  listDecoderCapabilities: async (request): Promise<DecoderCapabilitiesResult> =>
+    buildUnsupportedFakeDecoderCapabilities(request)
+};
+
+const fakeCaptureDecodeProvider: CaptureDecodeProvider = {
+  supportsDevice: supportsFakeRuntime,
+  captureDecode: async (request): Promise<CaptureDecodeResult> =>
+    buildUnsupportedFakeCaptureDecode(request)
+};
+
 const fakeLiveCaptureProvider: LiveCaptureProvider = {
   supportsDevice: supportsFakeRuntime,
   liveCapture: async (request): Promise<LiveCaptureResult> =>
@@ -216,6 +292,8 @@ const fakeLiveCaptureProvider: LiveCaptureProvider = {
 export class FakeDeviceProvider implements DeviceProvider {
   #snapshot: InventorySnapshot;
   readonly deviceOptions = fakeDeviceOptionsProvider;
+  readonly decoderCapabilities = fakeDecoderCapabilityProvider;
+  readonly captureDecode = fakeCaptureDecodeProvider;
   readonly liveCapture = fakeLiveCaptureProvider;
 
   constructor(initialState: readonly DiscoveredDevice[] | InventorySnapshot = []) {

@@ -1,6 +1,13 @@
 import type {
   AllocationRequest,
   AllocationResult,
+  CaptureDecodeFailure,
+  CaptureDecodeRequest,
+  CaptureDecodeResult,
+  DecoderCapabilitiesFailure,
+  DecoderCapabilitiesRequest,
+  DecoderCapabilitiesResult,
+  DecoderCapability,
   DeviceOptionsFailure,
   DeviceOptionsRequest,
   DeviceOptionsResult,
@@ -21,12 +28,16 @@ import {
   type DslogicLiveCaptureRunner
 } from "./dslogic/live-capture.js";
 import type {
+  CaptureDecodeProvider,
+  DecoderCapabilityProvider,
   DeviceOptionsProvider,
   DeviceProviderInput,
   LiveCaptureProvider,
   RegisteredDeviceProvider
 } from "./device-provider.js";
 import {
+  isCaptureDecodeProvider,
+  isDecoderCapabilityProvider,
   isDeviceOptionsProvider,
   isLiveCaptureProvider,
   normalizeDeviceProviders
@@ -84,6 +95,114 @@ const buildDeviceOptionsFailure = (
     diagnostics: overrides.diagnostics ?? device.diagnostics ?? []
   }
 });
+
+const buildDecoderCapabilitiesFailure = (
+  request: DecoderCapabilitiesRequest,
+  kind: DecoderCapabilitiesFailure["kind"],
+  message: string,
+  details: readonly string[],
+  device: DeviceRecord | null,
+  overrides: Partial<DecoderCapabilitiesFailure["diagnostics"]> = {}
+): DecoderCapabilitiesFailure => ({
+  ok: false,
+  reason: "decoder-capabilities-failed",
+  kind,
+  message,
+  deviceId: request.deviceId,
+  requestedAt: request.requestedAt,
+  decoders: null,
+  diagnostics: {
+    phase: overrides.phase ?? "validate-device",
+    providerKind: overrides.providerKind ?? device?.providerKind ?? null,
+    backendKind: overrides.backendKind ?? device?.backendKind ?? null,
+    backendVersion: overrides.backendVersion ?? null,
+    timeoutMs: overrides.timeoutMs ?? request.timeoutMs ?? null,
+    nativeCode: overrides.nativeCode ?? null,
+    decoderOutput: overrides.decoderOutput ?? null,
+    diagnosticOutput: overrides.diagnosticOutput ?? null,
+    details,
+    diagnostics: overrides.diagnostics ?? device?.diagnostics ?? []
+  }
+});
+
+const buildCaptureDecodeFailure = (
+  request: CaptureDecodeRequest,
+  kind: CaptureDecodeFailure["kind"],
+  phase: CaptureDecodeFailure["diagnostics"]["phase"],
+  message: string,
+  details: readonly string[],
+  device: DeviceRecord = request.session.device,
+  overrides: Partial<CaptureDecodeFailure["diagnostics"]> & {
+    artifactSummary?: CaptureDecodeFailure["artifactSummary"];
+    decode?: CaptureDecodeFailure["decode"];
+  } = {}
+): CaptureDecodeFailure => ({
+  ok: false,
+  reason: "capture-decode-failed",
+  kind,
+  message,
+  session: request.session,
+  requestedAt: request.requestedAt,
+  artifactSummary: overrides.artifactSummary ?? null,
+  decode: overrides.decode ?? null,
+  diagnostics: {
+    phase,
+    providerKind: overrides.providerKind ?? device.providerKind ?? null,
+    backendKind: overrides.backendKind ?? device.backendKind ?? null,
+    backendVersion: overrides.backendVersion ?? null,
+    timeoutMs: overrides.timeoutMs ?? request.timeoutMs ?? null,
+    nativeCode: overrides.nativeCode ?? null,
+    captureOutput: overrides.captureOutput ?? null,
+    decoderOutput: overrides.decoderOutput ?? null,
+    diagnosticOutput: overrides.diagnosticOutput ?? null,
+    details,
+    diagnostics: overrides.diagnostics ?? device.diagnostics ?? []
+  }
+});
+
+const formatRequestedDecodeDetails = (request: CaptureDecodeRequest): string => {
+  const channelMappings = Object.entries(request.decode.channelMappings).map(
+    ([role, channelId]) => `${role} -> ${channelId}`
+  );
+  const decoderOptions = Object.entries(request.decode.decoderOptions ?? {}).map(
+    ([optionId, value]) => `${optionId} ${String(value)}`
+  );
+
+  if (channelMappings.length > 0 && decoderOptions.length > 0) {
+    return `Requested channel mapping ${channelMappings.join(", ")} and ${decoderOptions.join(", ")}.`;
+  }
+
+  if (channelMappings.length > 0) {
+    return `Requested channel mapping ${channelMappings.join(", ")}.`;
+  }
+
+  if (decoderOptions.length > 0) {
+    return `Requested decoder option ${decoderOptions.join(", ")}.`;
+  }
+
+  return "Requested decode did not include channel mappings or decoder options.";
+};
+
+const buildUnavailableDecoderFailure = (
+  request: CaptureDecodeRequest,
+  device: DeviceRecord,
+  availableDecoders: readonly DecoderCapability[],
+  backendVersion: string | null
+): CaptureDecodeFailure => {
+  const availableDecoderIds = availableDecoders.map((decoder) => decoder.decoderId);
+  return buildCaptureDecodeFailure(
+    request,
+    "decode-failed",
+    "decode-validation",
+    `Decoder ${request.decode.decoderId} is not available for device ${request.session.deviceId}.`,
+    [
+      `Available decoder ids: ${availableDecoderIds.length > 0 ? availableDecoderIds.join(", ") : "none"}.`,
+      formatRequestedDecodeDetails(request)
+    ],
+    device,
+    { backendVersion }
+  );
+};
 
 const buildAuthoritativeSessionFailure = (
   request: LiveCaptureRequest,
@@ -154,6 +273,22 @@ const collectDeviceOptionsProviders = (
     createDslogicDeviceOptionsProvider(legacyDeviceOptionsRunner)
   ];
 };
+
+const collectDecoderCapabilityProviders = (
+  providers: readonly RegisteredDeviceProvider[]
+): readonly DecoderCapabilityProvider[] =>
+  providers.flatMap(({ provider }) =>
+    isDecoderCapabilityProvider(provider.decoderCapabilities)
+      ? [provider.decoderCapabilities]
+      : []
+  );
+
+const collectCaptureDecodeProviders = (
+  providers: readonly RegisteredDeviceProvider[]
+): readonly CaptureDecodeProvider[] =>
+  providers.flatMap(({ provider }) =>
+    isCaptureDecodeProvider(provider.captureDecode) ? [provider.captureDecode] : []
+  );
 
 const collectLiveCaptureProviders = (
   providers: readonly RegisteredDeviceProvider[],
@@ -303,6 +438,8 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
   readonly #providers: readonly RegisteredDeviceProvider[];
   readonly #now: () => string;
   readonly #deviceOptionsProviders: readonly DeviceOptionsProvider[];
+  readonly #decoderCapabilityProviders: readonly DecoderCapabilityProvider[];
+  readonly #captureDecodeProviders: readonly CaptureDecodeProvider[];
   readonly #liveCaptureProviders: readonly LiveCaptureProvider[];
   readonly #allocations = new Map<string, AllocationStateSnapshot>();
   #snapshot: InventorySnapshot = cloneSnapshot(EMPTY_SNAPSHOT);
@@ -314,6 +451,8 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
       this.#providers,
       options.deviceOptionsRunner
     );
+    this.#decoderCapabilityProviders = collectDecoderCapabilityProviders(this.#providers);
+    this.#captureDecodeProviders = collectCaptureDecodeProviders(this.#providers);
     this.#liveCaptureProviders = collectLiveCaptureProviders(
       this.#providers,
       options.liveCaptureRunner
@@ -571,6 +710,188 @@ export class InMemoryResourceManager implements SnapshotResourceManager {
         ],
         authoritativeDevice,
         { phase: "inspect-options" }
+      );
+    }
+  }
+
+  async listDecoderCapabilities(
+    request: DecoderCapabilitiesRequest
+  ): Promise<DecoderCapabilitiesResult> {
+    const authoritativeDevice = this.#findStoredDevice(request.deviceId);
+    if (!authoritativeDevice) {
+      return buildDecoderCapabilitiesFailure(
+        request,
+        "device-not-found",
+        `Cannot list decoder capabilities for unknown device ${request.deviceId}.`,
+        [
+          `Device ${request.deviceId} is not present in authoritative inventory.`,
+          "Decoder capability requests must target a device that is visible to the resource manager."
+        ],
+        null
+      );
+    }
+
+    const decoderCapabilityProvider = this.#decoderCapabilityProviders.find((provider) =>
+      provider.supportsDevice(authoritativeDevice)
+    );
+
+    if (!decoderCapabilityProvider) {
+      return buildDecoderCapabilitiesFailure(
+        request,
+        "unsupported-runtime",
+        `Decoder capabilities are not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+        [
+          `No registered decoder-capability provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
+          `No registered decoder-capability provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+          "Configure a provider-specific decoder capability handler for the authoritative device runtime."
+        ],
+        authoritativeDevice,
+        { phase: "prepare-runtime" }
+      );
+    }
+
+    try {
+      return await decoderCapabilityProvider.listDecoderCapabilities(request);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return buildDecoderCapabilitiesFailure(
+        request,
+        "native-error",
+        `Decoder capability provider failed while listing decoders for device ${request.deviceId}.`,
+        [
+          "Decoder-capability provider threw during listing dispatch.",
+          detail
+        ],
+        authoritativeDevice,
+        { phase: "list-decoders" }
+      );
+    }
+  }
+
+  async captureDecode(request: CaptureDecodeRequest): Promise<CaptureDecodeResult> {
+    const authoritativeDevice = this.#findStoredDevice(request.session.deviceId);
+    if (!authoritativeDevice) {
+      return buildCaptureDecodeFailure(
+        request,
+        "device-not-found",
+        "validate-session",
+        `Cannot capture and decode from unknown device ${request.session.deviceId}.`,
+        [
+          `Device ${request.session.deviceId} is not present in authoritative inventory.`,
+          "Capture-decode requests must target a device that is still visible to the resource manager."
+        ]
+      );
+    }
+
+    const dispatchedRequest: CaptureDecodeRequest = {
+      ...request,
+      session: {
+        ...request.session,
+        device: cloneRecord(authoritativeDevice)
+      }
+    };
+
+    if (authoritativeDevice.allocationState !== "allocated") {
+      return buildCaptureDecodeFailure(
+        dispatchedRequest,
+        "device-not-allocated",
+        "validate-session",
+        `Cannot capture and decode from unallocated device ${request.session.deviceId}.`,
+        [
+          `Authoritative allocation state is ${authoritativeDevice.allocationState}.`,
+          "Capture-decode requests must use an active allocated session."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    if (authoritativeDevice.ownerSkillId !== request.session.ownerSkillId) {
+      return buildCaptureDecodeFailure(
+        dispatchedRequest,
+        "owner-mismatch",
+        "validate-session",
+        `Cannot capture and decode from device ${request.session.deviceId} as owner ${request.session.ownerSkillId}.`,
+        [
+          `Authoritative owner is ${authoritativeDevice.ownerSkillId ?? "unowned"}.`,
+          "Capture-decode requests must use the currently allocated owner for the accepted session."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    const capabilityProvider = this.#decoderCapabilityProviders.find((provider) =>
+      provider.supportsDevice(authoritativeDevice)
+    );
+    if (capabilityProvider) {
+      const capabilities = await capabilityProvider.listDecoderCapabilities({
+        deviceId: request.session.deviceId,
+        requestedAt: request.requestedAt,
+        timeoutMs: request.timeoutMs
+      });
+      if (!capabilities.ok) {
+        return buildCaptureDecodeFailure(
+          dispatchedRequest,
+          capabilities.kind === "runtime-unavailable" || capabilities.kind === "timeout" || capabilities.kind === "malformed-output"
+            ? capabilities.kind
+            : "decode-failed",
+          "decode-validation",
+          `Decoder capability lookup failed for device ${request.session.deviceId}.`,
+          capabilities.diagnostics.details,
+          authoritativeDevice,
+          {
+            backendVersion: capabilities.diagnostics.backendVersion,
+            timeoutMs: capabilities.diagnostics.timeoutMs,
+            nativeCode: capabilities.diagnostics.nativeCode,
+            decoderOutput: capabilities.diagnostics.decoderOutput,
+            diagnosticOutput: capabilities.diagnostics.diagnosticOutput,
+            diagnostics: capabilities.diagnostics.diagnostics
+          }
+        );
+      }
+
+      if (!capabilities.decoders.some((decoder) => decoder.decoderId === request.decode.decoderId)) {
+        return buildUnavailableDecoderFailure(
+          dispatchedRequest,
+          authoritativeDevice,
+          capabilities.decoders,
+          capabilities.backendVersion
+        );
+      }
+    }
+
+    const captureDecodeProvider = this.#captureDecodeProviders.find((provider) =>
+      provider.supportsDevice(authoritativeDevice)
+    );
+
+    if (!captureDecodeProvider) {
+      return buildCaptureDecodeFailure(
+        dispatchedRequest,
+        "unsupported-runtime",
+        "prepare-runtime",
+        `Capture-decode is not configured for provider ${authoritativeDevice.providerKind ?? "unknown"} with backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+        [
+          `No registered capture-decode provider accepted provider ${authoritativeDevice.providerKind ?? "unknown"}.`,
+          `No registered capture-decode provider accepted backend ${authoritativeDevice.backendKind ?? "unknown"}.`,
+          "Configure a provider-specific capture-decode handler for the authoritative device runtime."
+        ],
+        authoritativeDevice
+      );
+    }
+
+    try {
+      return await captureDecodeProvider.captureDecode(dispatchedRequest);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return buildCaptureDecodeFailure(
+        dispatchedRequest,
+        "decode-failed",
+        "decode-run",
+        `Capture-decode provider failed while decoding device ${request.session.deviceId}.`,
+        [
+          "Capture-decode provider threw during decode dispatch.",
+          detail
+        ],
+        authoritativeDevice
       );
     }
   }

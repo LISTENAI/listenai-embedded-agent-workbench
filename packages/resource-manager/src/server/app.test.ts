@@ -1304,6 +1304,50 @@ describe("Hono app routes", () => {
         requestedAt: optionsRequest.requestedAt,
         capabilities
       }),
+      listDecoderCapabilities: async (capabilityRequest) => ({
+        ok: false,
+        reason: "decoder-capabilities-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        deviceId: capabilityRequest.deviceId,
+        requestedAt: capabilityRequest.requestedAt,
+        decoders: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: capabilityRequest.timeoutMs ?? null,
+          nativeCode: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      }),
+      captureDecode: async (decodeRequest) => ({
+        ok: false,
+        reason: "capture-decode-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: decodeRequest.session,
+        requestedAt: decodeRequest.requestedAt,
+        artifactSummary: null,
+        decode: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: decodeRequest.timeoutMs ?? null,
+          nativeCode: null,
+          captureOutput: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      }),
       liveCapture: async () => ({
         ok: false,
         reason: "capture-failed",
@@ -1420,6 +1464,50 @@ describe("Hono app routes", () => {
         device: null
       }),
       inspectDeviceOptions: async () => failure,
+      listDecoderCapabilities: async (capabilityRequest) => ({
+        ok: false,
+        reason: "decoder-capabilities-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        deviceId: capabilityRequest.deviceId,
+        requestedAt: capabilityRequest.requestedAt,
+        decoders: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: capabilityRequest.timeoutMs ?? null,
+          nativeCode: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      }),
+      captureDecode: async (decodeRequest) => ({
+        ok: false,
+        reason: "capture-decode-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: decodeRequest.session,
+        requestedAt: decodeRequest.requestedAt,
+        artifactSummary: null,
+        decode: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: decodeRequest.timeoutMs ?? null,
+          nativeCode: null,
+          captureOutput: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      }),
       liveCapture: async () => ({
         ok: false,
         reason: "capture-failed",
@@ -1990,6 +2078,50 @@ describe("Hono app routes", () => {
           diagnosticOutput: null,
           details: [],
           diagnostics: optionsRequest.session.device.diagnostics ?? []
+        }
+      }),
+      listDecoderCapabilities: async (capabilityRequest) => ({
+        ok: false,
+        reason: "decoder-capabilities-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        deviceId: capabilityRequest.deviceId,
+        requestedAt: capabilityRequest.requestedAt,
+        decoders: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: capabilityRequest.timeoutMs ?? null,
+          nativeCode: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
+        }
+      }),
+      captureDecode: async (decodeRequest) => ({
+        ok: false,
+        reason: "capture-decode-failed",
+        kind: "unsupported-runtime",
+        message: "unused",
+        session: decodeRequest.session,
+        requestedAt: decodeRequest.requestedAt,
+        artifactSummary: null,
+        decode: null,
+        diagnostics: {
+          phase: "prepare-runtime",
+          providerKind: "dslogic",
+          backendKind: "dsview-cli",
+          backendVersion: null,
+          timeoutMs: decodeRequest.timeoutMs ?? null,
+          nativeCode: null,
+          captureOutput: null,
+          decoderOutput: null,
+          diagnosticOutput: null,
+          details: [],
+          diagnostics: []
         }
       }),
       liveCapture: async () => ({

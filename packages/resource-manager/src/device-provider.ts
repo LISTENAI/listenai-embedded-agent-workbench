@@ -1,4 +1,8 @@
 import type {
+  CaptureDecodeRequest,
+  CaptureDecodeResult,
+  DecoderCapabilitiesRequest,
+  DecoderCapabilitiesResult,
   DeviceOptionsRequest,
   DeviceOptionsResult,
   DeviceRecord,
@@ -24,10 +28,22 @@ export interface DeviceOptionsProvider {
   inspectDeviceOptions(request: DeviceOptionsRequest): Promise<DeviceOptionsResult>;
 }
 
+export interface DecoderCapabilityProvider {
+  supportsDevice(device: DeviceRecord): boolean;
+  listDecoderCapabilities(request: DecoderCapabilitiesRequest): Promise<DecoderCapabilitiesResult>;
+}
+
+export interface CaptureDecodeProvider {
+  supportsDevice(device: DeviceRecord): boolean;
+  captureDecode(request: CaptureDecodeRequest): Promise<CaptureDecodeResult>;
+}
+
 export interface DeviceProvider {
   listInventorySnapshot(): Promise<InventorySnapshot>;
   listConnectedDevices(): Promise<readonly DiscoveredDevice[]>;
   deviceOptions?: DeviceOptionsProvider;
+  decoderCapabilities?: DecoderCapabilityProvider;
+  captureDecode?: CaptureDecodeProvider;
   liveCapture?: LiveCaptureProvider;
 }
 
@@ -88,6 +104,26 @@ export const isDeviceOptionsProvider = (
   typeof value.supportsDevice === "function" &&
   "inspectDeviceOptions" in value &&
   typeof value.inspectDeviceOptions === "function";
+
+export const isDecoderCapabilityProvider = (
+  value: DeviceProvider["decoderCapabilities"]
+): value is DecoderCapabilityProvider =>
+  typeof value === "object" &&
+  value !== null &&
+  "supportsDevice" in value &&
+  typeof value.supportsDevice === "function" &&
+  "listDecoderCapabilities" in value &&
+  typeof value.listDecoderCapabilities === "function";
+
+export const isCaptureDecodeProvider = (
+  value: DeviceProvider["captureDecode"]
+): value is CaptureDecodeProvider =>
+  typeof value === "object" &&
+  value !== null &&
+  "supportsDevice" in value &&
+  typeof value.supportsDevice === "function" &&
+  "captureDecode" in value &&
+  typeof value.captureDecode === "function";
 
 export const normalizeDeviceProviders = (
   input: DeviceProviderInput
