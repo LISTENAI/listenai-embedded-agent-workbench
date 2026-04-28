@@ -35,7 +35,7 @@ The script first runs `scripts/verify-m003-s04.sh`, then packs the four packages
 
 ## Local Real Publish
 
-A real publish is intentionally awkward. It requires a confirmation word plus registry credentials. The preferred ListenAI registry auth shape is explicit password auth:
+A real publish is intentionally awkward. It requires a confirmation word plus registry credentials. The default ListenAI registry auth mode is explicit password auth:
 
 ```bash
 LPM_PASSWORD_BASE64=... \
@@ -45,7 +45,7 @@ CONFIRM_PUBLISH=publish \
 bash scripts/publish-private-registry.sh --publish
 ```
 
-The script writes private-registry auth in the same shape as the existing ListenAI workflow convention:
+The script writes password auth in this shape:
 
 ```text
 //registry-lpm.listenai.com/:_password
@@ -54,12 +54,28 @@ The script writes private-registry auth in the same shape as the existing Listen
 //registry-lpm.listenai.com/:always-auth
 ```
 
-`LPM_PASSWORD_BASE64`, `LPM_USERNAME`, and `LPM_EMAIL` must be provided together; the script does not hardcode default registry identities. `LPM_ADMIN_TOKEN` is supported as an optional private-registry auth token fallback when password auth is not provided.
+`LPM_PASSWORD_BASE64`, `LPM_USERNAME`, and `LPM_EMAIL` are required in password mode; the script does not hardcode default registry identities. If password mode is not accepted by the registry, use token mode with `LPM_ADMIN_TOKEN`:
+
+```bash
+LISTENAI_NPM_AUTH_MODE=token \
+LPM_ADMIN_TOKEN=... \
+CONFIRM_PUBLISH=publish \
+bash scripts/publish-private-registry.sh --publish
+```
+
+Token mode writes private-registry auth as:
+
+```text
+//registry-lpm.listenai.com/:_authToken
+//registry-lpm.listenai.com/:always-auth
+```
 
 Safety gates:
 
 - `--publish` fails unless `CONFIRM_PUBLISH=publish`.
-- `--publish` fails unless password auth (`LPM_PASSWORD_BASE64`, `LPM_USERNAME`, and `LPM_EMAIL`) or `LPM_ADMIN_TOKEN` is set.
+- `LISTENAI_NPM_AUTH_MODE` must be `password` or `token` and defaults to `password`.
+- Password-mode `--publish` fails unless `LPM_PASSWORD_BASE64`, `LPM_USERNAME`, and `LPM_EMAIL` are set.
+- Token-mode `--publish` fails unless `LPM_ADMIN_TOKEN` is set.
 - The script checks every `package@version` is absent from the target registry before any real publish attempt.
 - Registry config is written only to a temporary npm userconfig.
 - The M003 consumer publish-readiness verifier runs before any package publish attempt.
@@ -79,6 +95,7 @@ Inputs:
 
 - `dry_run`: boolean, defaults to `true`.
 - `confirm_publish`: string, must be `publish` for a real publish.
+- `auth_mode`: `password` or `token`, defaults to `password`.
 
 Required secrets for password auth:
 
@@ -88,7 +105,7 @@ LPM_USERNAME
 LPM_EMAIL
 ```
 
-Optional fallback secret:
+Required secret for token auth:
 
 ```text
 LPM_ADMIN_TOKEN
@@ -98,9 +115,9 @@ Recommended workflow usage:
 
 1. Dispatch `Publish Private Packages` with `dry_run=true`.
 2. Confirm the run completes verification and dry-run publish for all four packages.
-3. Dispatch again with `dry_run=false` and `confirm_publish=publish` only when you intend to write to the private registry.
+3. Dispatch again with `dry_run=false`, `confirm_publish=publish`, and the intended `auth_mode` only when you intend to write to the private registry.
 
-The workflow uses `permissions: contents: read` and passes `LPM_PASSWORD_BASE64`, `LPM_USERNAME`, `LPM_EMAIL`, `LPM_ADMIN_TOKEN`, and `CONFIRM_PUBLISH` only as environment variables to `scripts/publish-private-registry.sh`.
+The workflow uses `permissions: contents: read` and passes `LPM_PASSWORD_BASE64`, `LPM_USERNAME`, `LPM_EMAIL`, `LPM_ADMIN_TOKEN`, `LISTENAI_NPM_AUTH_MODE`, and `CONFIRM_PUBLISH` only as environment variables to `scripts/publish-private-registry.sh`.
 
 ## Verification
 

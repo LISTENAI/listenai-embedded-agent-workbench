@@ -37,6 +37,8 @@ reject_file .npmrc
 reject_file .yarnrc.yml
 require_pattern "https://registry-lpm\.listenai\.com" "$SCRIPT"
 require_pattern "CONFIRM_PUBLISH=publish" "$SCRIPT"
+require_pattern "LISTENAI_NPM_AUTH_MODE" "$SCRIPT"
+require_pattern "must be password or token" "$SCRIPT"
 require_pattern "LPM_PASSWORD_BASE64" "$SCRIPT"
 require_pattern "LPM_USERNAME" "$SCRIPT"
 require_pattern "LPM_EMAIL" "$SCRIPT"
@@ -68,27 +70,38 @@ if ! rg -q "CONFIRM_PUBLISH=publish" /tmp/m004-publish-no-confirm.out; then
 fi
 rm -f /tmp/m004-publish-no-confirm.out
 
-if CONFIRM_PUBLISH=publish LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --publish >/tmp/m004-publish-no-token.out 2>&1; then
-  echo "[m004-s01] --publish without registry credentials unexpectedly succeeded" >&2
+if CONFIRM_PUBLISH=publish LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --publish >/tmp/m004-publish-no-password.out 2>&1; then
+  echo "[m004-s01] password-mode --publish without credentials unexpectedly succeeded" >&2
   exit 1
 fi
-if ! rg -q "LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL, or LPM_ADMIN_TOKEN" /tmp/m004-publish-no-token.out; then
-  echo "[m004-s01] --publish without registry credentials did not explain the credential guard" >&2
+if ! rg -q "password auth requires LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL" /tmp/m004-publish-no-password.out; then
+  echo "[m004-s01] password-mode --publish without credentials did not explain the credential guard" >&2
+  cat /tmp/m004-publish-no-password.out >&2
+  exit 1
+fi
+rm -f /tmp/m004-publish-no-password.out
+
+if CONFIRM_PUBLISH=publish LISTENAI_NPM_AUTH_MODE=token LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --publish >/tmp/m004-publish-no-token.out 2>&1; then
+  echo "[m004-s01] token-mode --publish without token unexpectedly succeeded" >&2
+  exit 1
+fi
+if ! rg -q "token auth requires LPM_ADMIN_TOKEN" /tmp/m004-publish-no-token.out; then
+  echo "[m004-s01] token-mode --publish without token did not explain the token guard" >&2
   cat /tmp/m004-publish-no-token.out >&2
   exit 1
 fi
 rm -f /tmp/m004-publish-no-token.out
 
-if CONFIRM_PUBLISH=publish LPM_PASSWORD_BASE64=placeholder LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --publish >/tmp/m004-publish-partial-password.out 2>&1; then
-  echo "[m004-s01] --publish with partial password auth unexpectedly succeeded" >&2
+if CONFIRM_PUBLISH=publish LISTENAI_NPM_AUTH_MODE=bad LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --publish >/tmp/m004-publish-bad-auth-mode.out 2>&1; then
+  echo "[m004-s01] --publish with invalid auth mode unexpectedly succeeded" >&2
   exit 1
 fi
-if ! rg -q "LPM_PASSWORD_BASE64, LPM_USERNAME, and LPM_EMAIL are required together" /tmp/m004-publish-partial-password.out; then
-  echo "[m004-s01] --publish with partial password auth did not explain the all-or-nothing guard" >&2
-  cat /tmp/m004-publish-partial-password.out >&2
+if ! rg -q "LISTENAI_NPM_AUTH_MODE must be password or token" /tmp/m004-publish-bad-auth-mode.out; then
+  echo "[m004-s01] invalid auth mode did not explain allowed modes" >&2
+  cat /tmp/m004-publish-bad-auth-mode.out >&2
   exit 1
 fi
-rm -f /tmp/m004-publish-partial-password.out
+rm -f /tmp/m004-publish-bad-auth-mode.out
 
 LISTENAI_PUBLISH_SKIP_READINESS=1 bash "$SCRIPT" --dry-run >/tmp/m004-publish-dry-run.out
 if ! rg -q "Completed dry-run for 4 package" /tmp/m004-publish-dry-run.out; then

@@ -15,6 +15,14 @@ on:
         required: false
         type: string
         default: ""
+      auth_mode:
+        description: "Registry authentication mode"
+        required: true
+        type: choice
+        default: password
+        options:
+          - password
+          - token
 
 permissions:
   contents: read
@@ -73,6 +81,7 @@ jobs:
           LPM_USERNAME: ${{ secrets.LPM_USERNAME }}
           LPM_EMAIL: ${{ secrets.LPM_EMAIL }}
           LPM_ADMIN_TOKEN: ${{ secrets.LPM_ADMIN_TOKEN }}
+          LISTENAI_NPM_AUTH_MODE: ${{ inputs.auth_mode }}
           CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
