@@ -323,11 +323,16 @@ export interface CaptureDecodeRequest {
   decode: CaptureDecodeConfig;
 }
 
+export interface CaptureDecodeRawReport extends Record<string, unknown> {
+  text: string;
+  bytes: readonly number[];
+}
+
 export interface CaptureDecodeReport {
   decoderId: string;
   annotations: readonly Record<string, unknown>[];
   rows: readonly Record<string, unknown>[];
-  raw: Record<string, unknown>;
+  raw: CaptureDecodeRawReport;
 }
 
 export interface CaptureDecodeFailureDiagnostics {

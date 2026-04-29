@@ -1700,7 +1700,7 @@ describe("in-memory resource manager decoder orchestration", () => {
               decoderId: "1:uart",
               annotations: [{ startSample: 0, endSample: 8, kind: "frame" }],
               rows: [{ startSample: 0, endSample: 8, data: "A" }],
-              raw: { decoderId: "1:uart", rows: 1 }
+              raw: { text: "A", bytes: [65], decoderId: "1:uart", rows: 1 }
             }
           };
         }

@@ -1740,6 +1740,22 @@ const parseGenericRecordArray = (
   });
 };
 
+const parseCaptureDecodeRawBytes = (
+  value: unknown,
+  path: string,
+): number[] => {
+  if (!Array.isArray(value)) {
+    throw new Error(`Malformed capture-decode response at ${path}`);
+  }
+
+  return value.map((entry, index) => {
+    if (typeof entry !== "number" || !Number.isInteger(entry) || entry < 0 || entry > 255) {
+      throw new Error(`Malformed capture-decode response at ${path}[${index}]`);
+    }
+    return entry;
+  });
+};
+
 const parseCaptureDecodeReport = (
   value: unknown,
   path: string,
@@ -1752,11 +1768,18 @@ const parseCaptureDecodeReport = (
     throw new Error(`Malformed capture-decode response at ${path}.raw`);
   }
 
+  const rawText = readCaptureDecodeString(value.raw.text, `${path}.raw.text`) as string;
+  const rawBytes = parseCaptureDecodeRawBytes(value.raw.bytes, `${path}.raw.bytes`);
+
   return {
     decoderId: readCaptureDecodeString(value.decoderId, `${path}.decoderId`) as string,
     annotations: parseGenericRecordArray(value.annotations, `${path}.annotations`),
     rows: parseGenericRecordArray(value.rows, `${path}.rows`),
-    raw: value.raw,
+    raw: {
+      ...value.raw,
+      text: rawText,
+      bytes: rawBytes,
+    },
   };
 };
 

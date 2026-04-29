@@ -1595,6 +1595,53 @@ const buildOfflineDecodeInput = (
 const serializeDecodeConfig = (config: Record<string, unknown>): string =>
   JSON.stringify(config).replace(/("num_stop_bits":)(-?\d+)([},])/g, "$1$2.0$3")
 
+const bytesToLatin1Text = (bytes: readonly number[]): string => {
+  let text = ""
+  const chunkSize = 8192
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    text += String.fromCharCode(...bytes.slice(index, index + chunkSize))
+  }
+  return text
+}
+
+const readDecodedByte = (annotation: Record<string, unknown>): number | null => {
+  const numericValue = annotation.numeric_value ?? annotation.numericValue ?? annotation.byte
+  if (typeof numericValue === "number" && Number.isInteger(numericValue) && numericValue >= 0 && numericValue <= 255) {
+    return numericValue
+  }
+
+  const texts = annotation.texts
+  if (Array.isArray(texts) && typeof texts[0] === "string" && texts[0].length === 1) {
+    const byte = texts[0].charCodeAt(0)
+    return byte <= 255 ? byte : null
+  }
+
+  const text = annotation.text
+  if (typeof text === "string" && text.length === 1) {
+    const byte = text.charCodeAt(0)
+    return byte <= 255 ? byte : null
+  }
+
+  return null
+}
+
+const isDecodedDataAnnotation = (annotation: Record<string, unknown>): boolean =>
+  annotation.numeric_value !== undefined
+  || annotation.numericValue !== undefined
+  || annotation.byte !== undefined
+  || annotation.type === "data"
+  || annotation.annotation_class === 0
+
+const extractRawDecodeBytes = (annotations: readonly Record<string, unknown>[]): number[] => {
+  const bytes: number[] = []
+  for (const annotation of annotations) {
+    if (!isDecodedDataAnnotation(annotation)) continue
+    const byte = readDecodedByte(annotation)
+    if (byte !== null) bytes.push(byte)
+  }
+  return bytes
+}
+
 const parseDecodeReport = (decoderId: string, output: string): CaptureDecodeReport | null => {
   const payloadText = extractJsonObject(output)
   if (!payloadText) return null
@@ -1618,7 +1665,17 @@ const parseDecodeReport = (decoderId: string, output: string): CaptureDecodeRepo
       : annotations.length > 0
         ? [{ id: "events", label: "Decoder events" }]
         : []
-  return { decoderId, annotations, rows, raw: payload }
+  const rawBytes = extractRawDecodeBytes(annotations)
+  return {
+    decoderId,
+    annotations,
+    rows,
+    raw: {
+      ...payload,
+      text: bytesToLatin1Text(rawBytes),
+      bytes: rawBytes
+    }
+  }
 }
 
 export const createDefaultDslogicNativeCaptureDecodeBackend = (

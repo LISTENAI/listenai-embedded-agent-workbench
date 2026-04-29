@@ -1094,7 +1094,11 @@ describe("native-runtime", () => {
       decode: {
         decoderId: "1:uart",
         annotations: [{ annotation_class: 0, annotation_type: 108, texts: ["A"], raw_texts: ["\n"], numeric_value: 65 }],
-        rows: [{ id: "events" }]
+        rows: [{ id: "events" }],
+        raw: {
+          text: "A",
+          bytes: [65]
+        }
       }
     })
   })

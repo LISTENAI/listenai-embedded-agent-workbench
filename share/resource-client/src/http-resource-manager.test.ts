@@ -1090,7 +1090,7 @@ describe("HttpResourceManager", () => {
       decoderId: "1:uart",
       annotations: [{ startSample: 10, endSample: 20, text: "boot" }],
       rows: [{ timestampNs: 1200, text: "boot" }],
-      raw: { report: { rows: [{ text: "boot" }] } },
+      raw: { text: "boot", bytes: [98, 111, 111, 116], report: { rows: [{ text: "boot" }] } },
     };
 
     const diagnostics = {
@@ -1274,7 +1274,7 @@ describe("HttpResourceManager", () => {
             decoderId: "1:uart",
             annotations: [],
             rows: ["boot"],
-            raw: { report: { rows: ["boot"] } },
+            raw: { text: "boot", bytes: [98, 111, 111, 116], report: { rows: ["boot"] } },
           },
         }),
       );

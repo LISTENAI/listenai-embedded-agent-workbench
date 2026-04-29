@@ -116,6 +116,8 @@ const uartDecodeReport = {
     },
   ],
   raw: {
+    text: "U",
+    bytes: [85],
     decoderId: "1:uart",
     rows: [{ value: "0x55", text: "U" }],
   },
