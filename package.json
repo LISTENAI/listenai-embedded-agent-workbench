@@ -36,7 +36,8 @@
     "verify:m010:s03": "bash scripts/verify-m010-s03.sh",
     "verify:m010:s04": "bash scripts/verify-m010-s04.sh",
     "verify:m010:s05": "bash scripts/verify-m010-s05.sh",
-    "verify:m005:s03": "bash scripts/verify-m005-s03.sh"
+    "verify:m005:s03": "bash scripts/verify-m005-s03.sh",
+    "verify:m005:s04": "bash scripts/verify-m005-s04.sh"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
