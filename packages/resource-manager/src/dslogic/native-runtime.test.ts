@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import type { DeviceOptionsRequest, LiveCaptureRequest } from "@listenai/eaw-contracts"
 import {
+  createDefaultDslogicNativeCaptureDecodeBackend,
+  createDefaultDslogicNativeDecoderCapabilitiesBackend,
   createDefaultDslogicNativeDeviceOptionsBackend,
   createDefaultDslogicNativeLiveCaptureBackend,
   createDslogicNativeRuntime,
@@ -800,15 +802,15 @@ describe("native-runtime", () => {
       "4000",
       "--channels",
       "0",
-      "--operation",
+      "--operation-mode",
       "collect",
-      "--channel",
+      "--channel-mode",
       "buffer",
-      "--stop",
+      "--stop-option",
       "samples",
       "--filter",
       "none",
-      "--threshold",
+      "--threshold-volts",
       "1.8v",
       "--output",
       "/tmp/dslogic-tuned/dslogic-plus.vcd",
@@ -819,6 +821,282 @@ describe("native-runtime", () => {
       "--poll-interval-ms",
       "50"
     ])
+  })
+
+  it("adds duration-ms while preserving sample-limit for stream captures", async () => {
+    const { runner, calls } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: JSON.stringify({
+          operation_modes: [{ token: "stream", label: "Stream Mode" }],
+          channel_modes_by_operation_mode: [
+            {
+              operation_mode_token: "stream",
+              channel_modes: [
+                { token: "use-16-channels-max-20mhz", label: "Use 16 Channels (Max 20MHz)" }
+              ]
+            }
+          ],
+          stop_options: [{ token: "upload-captured-data", label: "Upload captured data" }],
+          filters: [{ token: "none", label: "None" }],
+          threshold: { current_volts: 1 }
+        }),
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"artifacts\":{\"vcd_path\":\"/tmp/dslogic-stream/dslogic-plus.vcd\",\"metadata_path\":\"/tmp/dslogic-stream/dslogic-plus.json\"}}",
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeLiveCaptureBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: "/usr/bin/dsview-cli", binaryPath: "/usr/bin/dsview-cli", version: "1.2.3" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner,
+      createTempDir: async () => "/tmp/dslogic-stream",
+      removeTempDir: async () => undefined,
+      readTextFile: async (path) => path.endsWith(".vcd") ? "$date\n$end\n" : "{}"
+    })
+
+    await expect(backend.capture(createCaptureRequest({
+      timeoutMs: 3_000,
+      captureTuning: {
+        operation: "stream",
+        channel: "use-16-channels-max-20mhz",
+        stop: "upload-captured-data",
+        filter: "none"
+      },
+      session: {
+        ...createCaptureRequest().session,
+        sampling: {
+          ...createCaptureRequest().session.sampling,
+          captureDurationMs: 1000
+        }
+      }
+    }))).resolves.toMatchObject({ ok: true })
+    expect(calls[2]?.args).toEqual([
+      "capture",
+      "--format",
+      "json",
+      "--handle",
+      "1",
+      "--sample-rate-hz",
+      "1000000",
+      "--sample-limit",
+      "1000000",
+      "--duration-ms",
+      "1000",
+      "--channels",
+      "0",
+      "--operation-mode",
+      "stream",
+      "--channel-mode",
+      "use-16-channels-max-20mhz",
+      "--filter",
+      "none",
+      "--output",
+      "/tmp/dslogic-stream/dslogic-plus.vcd",
+      "--metadata-output",
+      "/tmp/dslogic-stream/dslogic-plus.json",
+      "--wait-timeout-ms",
+      "6000",
+      "--poll-interval-ms",
+      "50"
+    ])
+  })
+
+  it("lists decoder capabilities with inspected UART metadata", async () => {
+    const { runner } = createCommandRunner([
+      {
+        ok: true,
+        stdout: JSON.stringify({ decoders: [{ id: "1:uart", name: "UART", description: "Serial" }] }),
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: JSON.stringify({
+          decoder: {
+            id: "1:uart",
+            name: "UART",
+            description: "Serial",
+            required_channels: [{ id: "rxtx", name: "RX/TX", description: "UART line", idn: "dec_1uart_chan_rxtx" }],
+            optional_channels: [],
+            options: [{ id: "baudrate", description: "Baud rate", default_value: "int64 115200", values: [] }]
+          }
+        }),
+        stderr: ""
+      }
+    ])
+    const backend = createDefaultDslogicNativeDecoderCapabilitiesBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: "/usr/bin/dsview-cli", binaryPath: "/usr/bin/dsview-cli", version: "1.2.3" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner
+    })
+
+    await expect(backend.listDecoderCapabilities({
+      deviceId: "dslogic-plus",
+      requestedAt: checkedAt,
+      timeoutMs: 3_000
+    })).resolves.toMatchObject({
+      ok: true,
+      decoders: [{
+        decoderId: "1:uart",
+        requiredChannels: [{ id: "rxtx", label: "RX/TX" }],
+        options: [{ id: "baudrate", valueType: "number" }]
+      }]
+    })
+  })
+
+  it("captures and decodes UART bytes from DSLogic VCD events", async () => {
+    const vcd = [
+      "$date test $end",
+      "$version test $end",
+      "$timescale 1 ns $end",
+      "$scope module logic $end",
+      "$var wire 1 ! D0 $end",
+      "$upscope $end",
+      "$enddefinitions $end",
+      "#0 1!",
+      "#10000 0!",
+      "#18681 1!",
+      "#27361 0!",
+      "#70764 1!",
+      "#79444 0!",
+      "#88125 1!"
+    ].join("\n")
+    const { runner } = createCommandRunner([
+      {
+        ok: true,
+        stdout: "{\"devices\":[{\"handle\":1,\"stable_id\":\"dslogic-plus\"}]}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: JSON.stringify({
+          operation_modes: [{ token: "stream", label: "Stream Mode" }],
+          channel_modes_by_operation_mode: [{ operation_mode_token: "stream", channel_modes: [{ token: "use-16-channels-max-20mhz" }] }],
+          stop_options: [{ token: "upload-captured-data" }],
+          filters: [{ token: "none" }],
+          threshold: { current_volts: 1 }
+        }),
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: "{\"artifacts\":{\"vcd_path\":\"/tmp/dslogic-decode/dslogic-plus.vcd\",\"metadata_path\":\"/tmp/dslogic-decode/dslogic-plus.json\"}}",
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: JSON.stringify({
+          decoder: {
+            id: "1:uart",
+            required_channels: [{ id: "rxtx", idn: "dec_1uart_chan_rxtx" }],
+            optional_channels: [],
+            options: [{ id: "baudrate", default_value: "int64 115200", values: [] }]
+          }
+        }),
+        stderr: ""
+      },
+      {
+        ok: true,
+        stdout: JSON.stringify({
+          report: {
+            run: { status: "success", root_decoder_id: "1:uart" },
+            events: [{ annotation_class: 0, annotation_type: 108, texts: ["A"], raw_texts: ["\n"], numeric_value: 65 }]
+          }
+        }),
+        stderr: ""
+      }
+    ])
+    const writtenFiles = new Map<string, string>()
+    const backend = createDefaultDslogicNativeCaptureDecodeBackend({
+      runtime: {
+        probe: async () => ({
+          checkedAt,
+          host: { platform: "linux", os: "linux", arch: "x64" },
+          runtime: { state: "ready", libraryPath: "/usr/bin/dsview-cli", binaryPath: "/usr/bin/dsview-cli", version: "1.2.3" },
+          devices: [],
+          diagnostics: []
+        })
+      },
+      executeCommand: runner,
+      createTempDir: async () => "/tmp/dslogic-decode",
+      removeTempDir: async () => undefined,
+      writeTextFile: async (path, content) => {
+        writtenFiles.set(path, content)
+      },
+      readTextFile: async (path) => path.endsWith(".vcd")
+        ? vcd
+        : path.endsWith("decode-report.json")
+          ? JSON.stringify({
+              report: {
+                run: { status: "success", root_decoder_id: "1:uart" },
+                events: [{ annotation_class: 0, annotation_type: 108, texts: ["A"], raw_texts: ["\n"], numeric_value: 65 }]
+              }
+            })
+          : JSON.stringify({
+            tool: { version: "1.2.3" },
+            capture: { timestamp_utc: checkedAt, sample_rate_hz: 1_000_000, requested_sample_limit: 120, actual_sample_count: 120 }
+          })
+    })
+
+    const result = await backend.captureDecode({
+      ...createCaptureRequest({
+        timeoutMs: 3_000,
+        captureTuning: { operation: "stream", channel: "use-16-channels-max-20mhz", filter: "none" },
+        session: {
+          ...createCaptureRequest().session,
+          sampling: {
+            sampleRateHz: 1_000_000,
+            captureDurationMs: 1,
+            channels: [{ channelId: "D0" }]
+          }
+        }
+      }),
+      decode: {
+        decoderId: "1:uart",
+        channelMappings: { rxtx: "D0" },
+        decoderOptions: { baudrate: 115200, num_data_bits: 8, invert: "no" }
+      }
+    })
+
+    const decodeInput = JSON.parse(writtenFiles.get("/tmp/dslogic-decode/decode-input.json") ?? "{}")
+    expect(decodeInput).toMatchObject({
+      samplerate_hz: 1_000_000,
+      format: "cross_logic",
+      unitsize: 1,
+      channel_count: 1
+    })
+    expect(decodeInput.sample_bytes).toHaveLength(16)
+
+    expect(result).toMatchObject({
+      ok: true,
+      decode: {
+        decoderId: "1:uart",
+        annotations: [{ annotation_class: 0, annotation_type: 108, texts: ["A"], raw_texts: ["\n"], numeric_value: 65 }],
+        rows: [{ id: "events" }]
+      }
+    })
   })
 
 })

@@ -7,6 +7,8 @@ import { createServer } from "./server/server.js"
 import { LeaseManager } from "./server/lease-manager.js"
 import { createDeviceProvider } from "./dslogic/provider-factory.js"
 import {
+  createDefaultDslogicNativeCaptureDecodeBackend,
+  createDefaultDslogicNativeDecoderCapabilitiesBackend,
   createDefaultDslogicNativeDeviceOptionsBackend,
   createDefaultDslogicNativeLiveCaptureBackend
 } from "./dslogic/native-runtime.js"
@@ -226,6 +228,13 @@ async function startForeground(options: RuntimeOptions) {
         ? {
             deviceOptionsRunner: createDefaultDslogicNativeDeviceOptionsBackend({
               dsviewCliPath: options.dsviewCliPath
+            }),
+            decoderCapabilitiesRunner: createDefaultDslogicNativeDecoderCapabilitiesBackend({
+              dsviewCliPath: options.dsviewCliPath
+            }),
+            captureDecodeRunner: createDefaultDslogicNativeCaptureDecodeBackend({
+              dsviewCliPath: options.dsviewCliPath,
+              dsviewResourceDir: options.dsviewResourceDir
             }),
             liveCaptureRunner: createDefaultDslogicNativeLiveCaptureBackend({
               dsviewCliPath: options.dsviewCliPath,

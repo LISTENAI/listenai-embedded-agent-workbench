@@ -3,6 +3,9 @@ import {
   DSLOGIC_PROVIDER_KIND,
   summarizeLiveCaptureArtifact,
   summarizeLiveCaptureArtifacts,
+  type CaptureDecodeResult,
+  type DecoderCapabilitiesRequest,
+  type DecoderCapabilitiesResult,
   type DeviceOptionsFailure,
   type DeviceOptionsFailureDiagnostics,
   type DeviceOptionsRequest,
@@ -21,12 +24,14 @@ import {
   type LiveCaptureStreamSummary,
   type LiveCaptureSuccess
 } from "@listenai/eaw-contracts";
-import type { DeviceOptionsProvider, LiveCaptureProvider } from "../device-provider.js";
+import type { CaptureDecodeProvider, DecoderCapabilityProvider, DeviceOptionsProvider, LiveCaptureProvider } from "../device-provider.js";
 import {
   createDslogicNativeDeviceOptionsBackend,
   createDslogicNativeLiveCaptureBackend,
+  type DslogicNativeCaptureDecodeBackend,
   type DslogicNativeCaptureFailure,
   type DslogicNativeCaptureStreamValue,
+  type DslogicNativeDecoderCapabilitiesBackend,
   type DslogicNativeDeviceOptionsBackend,
   type DslogicNativeDeviceOptionsFailure,
   type DslogicNativeLiveCaptureBackend
@@ -38,6 +43,8 @@ const MAX_CHANNEL_COUNT = 16;
 
 export type DslogicLiveCaptureRunner = DslogicNativeLiveCaptureBackend;
 export type DslogicDeviceOptionsRunner = DslogicNativeDeviceOptionsBackend;
+export type DslogicDecoderCapabilitiesRunner = DslogicNativeDecoderCapabilitiesBackend;
+export type DslogicCaptureDecodeRunner = DslogicNativeCaptureDecodeBackend;
 
 export type InspectDslogicDeviceOptionsOptions =
   | { nativeOptions: DslogicNativeDeviceOptionsBackend }
@@ -410,6 +417,21 @@ export const createDslogicDeviceOptionsProvider = (
   inspectDeviceOptions: (request) => inspectDslogicDeviceOptions(request, { nativeOptions })
 });
 
+export const createDslogicDecoderCapabilitiesProvider = (
+  nativeDecoderCapabilities: DslogicNativeDecoderCapabilitiesBackend
+): DecoderCapabilityProvider => ({
+  supportsDevice: supportsDslogicLiveCapture,
+  listDecoderCapabilities: (request: DecoderCapabilitiesRequest): Promise<DecoderCapabilitiesResult> =>
+    nativeDecoderCapabilities.listDecoderCapabilities(request)
+});
+
+export const createDslogicCaptureDecodeProvider = (
+  nativeCaptureDecode: DslogicNativeCaptureDecodeBackend
+): CaptureDecodeProvider => ({
+  supportsDevice: supportsDslogicLiveCapture,
+  captureDecode: (request): Promise<CaptureDecodeResult> => nativeCaptureDecode.captureDecode(request)
+});
+
 export const createDslogicLiveCaptureRunner = (
   capture: DslogicNativeLiveCaptureBackend["capture"]
 ): DslogicLiveCaptureRunner => createDslogicNativeLiveCaptureBackend(capture);
@@ -418,6 +440,14 @@ export const createDslogicDeviceOptionsRunner = (
   inspectDeviceOptions: DslogicNativeDeviceOptionsBackend["inspectDeviceOptions"]
 ): DslogicDeviceOptionsRunner => createDslogicNativeDeviceOptionsBackend(inspectDeviceOptions);
 
+export const createDslogicDecoderCapabilitiesRunner = (
+  listDecoderCapabilities: DslogicNativeDecoderCapabilitiesBackend["listDecoderCapabilities"]
+): DslogicDecoderCapabilitiesRunner => ({ listDecoderCapabilities });
+
+export const createDslogicCaptureDecodeRunner = (
+  captureDecode: DslogicNativeCaptureDecodeBackend["captureDecode"]
+): DslogicCaptureDecodeRunner => ({ captureDecode });
+
 export const createDslogicNativeLiveCapture = (
   capture: DslogicNativeLiveCaptureBackend["capture"]
 ): DslogicNativeLiveCaptureBackend => createDslogicNativeLiveCaptureBackend(capture);
@@ -425,6 +455,14 @@ export const createDslogicNativeLiveCapture = (
 export const createDslogicNativeDeviceOptions = (
   inspectDeviceOptions: DslogicNativeDeviceOptionsBackend["inspectDeviceOptions"]
 ): DslogicNativeDeviceOptionsBackend => createDslogicNativeDeviceOptionsBackend(inspectDeviceOptions);
+
+export const createDslogicNativeDecoderCapabilities = (
+  listDecoderCapabilities: DslogicNativeDecoderCapabilitiesBackend["listDecoderCapabilities"]
+): DslogicNativeDecoderCapabilitiesBackend => ({ listDecoderCapabilities });
+
+export const createDslogicNativeCaptureDecode = (
+  captureDecode: DslogicNativeCaptureDecodeBackend["captureDecode"]
+): DslogicNativeCaptureDecodeBackend => ({ captureDecode });
 
 export const createLiveCaptureRequest = (
   session: LiveCaptureSession,

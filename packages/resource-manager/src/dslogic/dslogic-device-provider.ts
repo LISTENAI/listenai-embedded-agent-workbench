@@ -10,6 +10,8 @@ import type {
   DeviceOptionsProvider,
   DeviceProvider,
   DiscoveredDevice,
+  DecoderCapabilityProvider,
+  CaptureDecodeProvider,
   LiveCaptureProvider
 } from "../device-provider.js"
 import {
@@ -22,8 +24,12 @@ import {
   type DslogicProbeDeviceCandidate
 } from "./backend-probe.js"
 import {
+  createDslogicCaptureDecodeProvider,
+  createDslogicDecoderCapabilitiesProvider,
   createDslogicDeviceOptionsProvider,
   createDslogicLiveCaptureProvider,
+  type DslogicCaptureDecodeRunner,
+  type DslogicDecoderCapabilitiesRunner,
   type DslogicDeviceOptionsRunner,
   type DslogicLiveCaptureRunner
 } from "./live-capture.js"
@@ -33,6 +39,8 @@ export interface DslogicDeviceProviderOptions {
   now?: () => string
   getHostPlatform?: () => NodeJS.Platform
   deviceOptionsRunner?: DslogicDeviceOptionsRunner
+  decoderCapabilitiesRunner?: DslogicDecoderCapabilitiesRunner
+  captureDecodeRunner?: DslogicCaptureDecodeRunner
   liveCaptureRunner?: DslogicLiveCaptureRunner
 }
 
@@ -204,6 +212,8 @@ export class DslogicDeviceProvider implements DeviceProvider {
   readonly #now: () => string
   readonly #getHostPlatform: () => NodeJS.Platform
   readonly deviceOptions?: DeviceOptionsProvider
+  readonly decoderCapabilities?: DecoderCapabilityProvider
+  readonly captureDecode?: CaptureDecodeProvider
   readonly liveCapture?: LiveCaptureProvider
 
   constructor(options: DslogicDeviceProviderOptions = {}) {
@@ -215,6 +225,12 @@ export class DslogicDeviceProvider implements DeviceProvider {
     this.#getHostPlatform = options.getHostPlatform ?? (() => process.platform)
     this.deviceOptions = options.deviceOptionsRunner
       ? createDslogicDeviceOptionsProvider(options.deviceOptionsRunner)
+      : undefined
+    this.decoderCapabilities = options.decoderCapabilitiesRunner
+      ? createDslogicDecoderCapabilitiesProvider(options.decoderCapabilitiesRunner)
+      : undefined
+    this.captureDecode = options.captureDecodeRunner
+      ? createDslogicCaptureDecodeProvider(options.captureDecodeRunner)
       : undefined
     this.liveCapture = options.liveCaptureRunner
       ? createDslogicLiveCaptureProvider(options.liveCaptureRunner)
