@@ -244,12 +244,13 @@ Do not make source commands the default user path in host-facing docs.
 
 ## Verify the package and docs
 
-After changing the skill package or this guide, run the focused S03 checks:
+After changing the skill package or this guide, run the final M005 S04 acceptance check:
 
 ```bash
-pnpm run verify:m005:s03
-bash scripts/verify-m005-s03.sh
+pnpm run verify:m005:s04
 ```
+
+`verify:m005:s04` includes the connected UART-log parser, integration, resource-manager route, package guidance, and wording guards. S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately.
 
 For the broader DSLogic support story, run:
 

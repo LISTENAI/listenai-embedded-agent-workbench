@@ -56,6 +56,43 @@ require_pattern \
   '"verify:m005:s04": "bash scripts/verify-m005-s04.sh"' \
   package.json
 
+echo "[verify-m005-s04] S04 documentation proof-gap guard"
+python3 - <<'PY'
+from pathlib import Path
+
+DOC_PROOF_FILES = [
+    Path("README.md"),
+    Path("packages/skill-logic-analyzer/README.md"),
+    Path("packages/skill-logic-analyzer/SKILL.md"),
+    Path("docs/logic-analyzer-agent-skill.md"),
+    Path("docs/logic-analyzer-agent-skill.zh-CN.md"),
+]
+
+REQUIRED_MARKERS = [
+    "verify:m005:s04",
+    "fixture/integration acceptance",
+    "does not claim real DSLogic hardware capture/decode",
+]
+
+missing_by_file = {}
+for path in DOC_PROOF_FILES:
+    content = path.read_text()
+    missing = [marker for marker in REQUIRED_MARKERS if marker not in content]
+    if missing:
+        missing_by_file[str(path)] = missing
+
+if missing_by_file:
+    details = "; ".join(
+        f"{file}: {', '.join(markers)}" for file, markers in missing_by_file.items()
+    )
+    file_set = ", ".join(str(path) for path in DOC_PROOF_FILES)
+    raise SystemExit(
+        f"[verify-m005-s04] documentation proof-gap guard missing markers ({details}) in file set: {file_set}"
+    )
+
+print("[verify-m005-s04] documentation proof-gap guard passed")
+PY
+
 run_layer \
   "contracts build" \
   120 \

@@ -244,12 +244,13 @@ pnpm --filter @listenai/eaw-skill-logic-analyzer test
 
 ## 验证 package 和文档
 
-修改 skill package 或这份 guide 后，运行 S03 focused checks：
+修改 skill package 或这份 guide 后，运行最终 M005 S04 acceptance check：
 
 ```bash
-pnpm run verify:m005:s03
-bash scripts/verify-m005-s03.sh
+pnpm run verify:m005:s04
 ```
+
+`verify:m005:s04` 覆盖 connected UART-log parser、integration、resource-manager route、package guidance 和 wording guards。S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately.
 
 如果要检查更完整的 DSLogic 支持说明，运行：
 

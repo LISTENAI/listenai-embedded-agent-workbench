@@ -392,14 +392,17 @@ Keep the typed vocabulary from `@listenai/eaw-contracts` intact: device readines
 
 ## Verification
 
-Use the M010 S05 gate when validating the packaged runtime boundary and the cross-platform DSLogic support story:
+Use the M005 S04 gate when validating the connected UART-log acceptance path and the M010 S05 gate when validating the packaged runtime boundary plus the cross-platform DSLogic support story:
 
 ```bash
+pnpm run verify:m005:s04
 bash scripts/verify-m010-s05.sh
 pnpm run verify:m010:s05
 ```
 
-That acceptance seam is the intended operator-facing check for the packaged macOS `dsview-cli` live proof plus the DSLogic support-matrix assertions. The package-specific focused checks that back the current S05 contract are:
+`verify:m005:s04` is the final M005 acceptance command for the connected resource-manager capture/decode path. S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately.
+
+The M010 S05 acceptance seam is the intended operator-facing check for the packaged macOS `dsview-cli` live proof plus the DSLogic support-matrix assertions. The package-specific focused checks that back the current S05 contract are:
 
 ```bash
 pnpm --filter @listenai/eaw-skill-logic-analyzer exec vitest run src/generic-skill.test.ts

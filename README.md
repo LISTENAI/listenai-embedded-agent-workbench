@@ -149,8 +149,11 @@ Before changing package publishing behavior, run the focused checks from the rep
 
 ```bash
 bash scripts/verify-m003-s01.sh
+pnpm run verify:m005:s04
 pnpm run verify:m010:s05
 ```
+
+`verify:m005:s04` is the final M005 acceptance command for the connected UART-log path. S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately.
 
 `verify:m010:s05` checks the existing DSLogic support story: macOS via `dsview-cli` is the only `live-proven` host path, and only the classic DSLogic Plus variant is treated as ready on that path. Linux and Windows remain `readiness-modeled` future paths with truthful diagnostics.
 
