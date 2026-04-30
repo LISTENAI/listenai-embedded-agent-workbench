@@ -125,11 +125,18 @@ Use this path when the user asks for a connected protocol log, such as "capture 
 
 The HTTP route behind this client call is `POST /capture/decode`. Hosts should keep the returned `phase`, `kind`, `message`, `session`, backend identity, artifact summary, and decode summary intact when surfacing failures.
 
+Host bootstrap rules for connected protocol logs:
+
+1. Probe the packaged daemon first, normally `http://127.0.0.1:7600/health`.
+2. If it is not healthy, start only the packaged CLI: `eaw-resource-manager start --daemon --host 127.0.0.1 --port 7600 --json`.
+3. If `eaw-resource-manager` is missing or startup fails, fail closed with that diagnostic and the global install command.
+4. Never search parent directories for a source checkout. Do not run `../listenai_agent_skills`, `packages/resource-manager/dist/cli.js`, `src/cli.ts`, or `pnpm --filter @listenai/eaw-resource-manager` from an installed host project.
+
 ```ts
 import { HttpResourceManager } from "@listenai/eaw-resource-client";
 import { createLogicAnalyzerSkill } from "@listenai/eaw-skill-logic-analyzer";
 
-const resourceManager = new HttpResourceManager("http://127.0.0.1:8718");
+const resourceManager = new HttpResourceManager("http://127.0.0.1:7600");
 const sessionSkill = createLogicAnalyzerSkill(resourceManager, {
   createSessionId: () => `logic-analyzer-${Date.now()}`
 });
@@ -184,18 +191,17 @@ if (!uartCapability) {
 const decodeResult = await resourceManager.captureDecode({
   session: startResult.session,
   requestedAt,
-  timeoutMs: 1500,
+  timeoutMs: 30_000,
   captureTuning: {
-    operation: "collect",
-    channel: "buffer",
-    stop: "samples",
+    operation: "stream",
+    channel: "use-16-channels-max-20mhz",
     filter: "none",
-    threshold: "1.8v"
+    threshold: "1.0"
   },
   decode: {
     decoderId: requestedDecoderId,
-    channelMappings: { rx: "D0" },
-    decoderOptions: { baudrate: 921600 }
+    channelMappings: { rxtx: "D0" },
+    decoderOptions: { baudrate: 921600, num_stop_bits: 1.0 }
   }
 });
 
@@ -209,6 +215,8 @@ if (!decodeResult.ok) {
 
 const hostOutput = {
   decoderId: decodeResult.decode.decoderId,
+  text: decodeResult.decode.raw.text,
+  bytes: decodeResult.decode.raw.bytes,
   rows: decodeResult.decode.rows,
   annotations: decodeResult.decode.annotations,
   artifact: decodeResult.artifactSummary,
@@ -216,7 +224,7 @@ const hostOutput = {
 };
 ```
 
-Fail closed when resource-manager is unavailable, the device/session is not ready, the requested decoder capability is missing, or `captureDecode()` returns `ok: false`. Malformed HTTP payloads should remain transport/parser errors from `HttpResourceManager` rather than being rewritten into a successful host output. Only write user-visible decoded rows or annotations after the typed `ok: true` branch.
+Fail closed when resource-manager is unavailable, the device/session is not ready, the requested decoder capability is missing, or `captureDecode()` returns `ok: false`. Malformed HTTP payloads should remain transport/parser errors from `HttpResourceManager` rather than being rewritten into a successful host output. Only write user-visible decoded output after the typed `ok: true` branch; prefer `decode.raw.text` / `decode.raw.bytes`, and use rows or annotations only as secondary structured context.
 
 ## Offline artifact decode through the skill package
 
@@ -384,28 +392,16 @@ The packaged live DSLogic path is live-proven in M010 only on the macOS host pat
 
 | Host platform | Backend expectation | Shared readiness labels | Proof status | What operators should inspect |
 | --- | --- | --- | --- | --- |
-| macOS | `dsview-cli` is available and the classic DSLogic Plus probe resolves cleanly as the supported device path | backend `ready`, classic DSLogic Plus `ready` | `live-proven` | Run `bash scripts/verify-m010-s05.sh` or `pnpm run verify:m010:s05`, then inspect `backendReadiness[]`, device `readiness`, and returned diagnostics before broadening the support claim. |
+| macOS | `dsview-cli` is available and the classic DSLogic Plus probe resolves cleanly as the supported device path | backend `ready`, classic DSLogic Plus `ready` | `live-proven` | In the source repository, run the M010 S05 gate before broadening the support claim; in installed host projects, inspect `backendReadiness[]`, device `readiness`, and returned diagnostics. |
 | Linux | `dsview-cli` readiness may still surface truthful diagnostics, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
 | Windows | `dsview-cli` readiness may still surface truthful diagnostics, but the packaged M010 operator path is not yet live-proven there | backend can remain `missing`, `degraded`, or `unsupported`; devices stay non-allocatable until the host path is proven | `readiness-modeled` | Treat `backend-missing-runtime`, `backend-runtime-timeout`, `backend-runtime-malformed-response`, `backend-unsupported-os`, `device-unsupported-variant`, and `device-runtime-malformed-response` as the current operator truth instead of assuming capture readiness. |
 
 Keep the typed vocabulary from `@listenai/eaw-contracts` intact: device readiness is `ready`, `degraded`, or `unsupported`; backend readiness is `ready`, `degraded`, `missing`, or `unsupported`. Hosts should preserve those values in logs, browser surfaces, and operator docs instead of rewriting them into softer install-success language.
 
-## Verification
+## Maintainer verification
 
-Use the M005 S04 gate when validating the connected UART-log acceptance path and the M010 S05 gate when validating the packaged runtime boundary plus the cross-platform DSLogic support story:
+The commands in this section are maintainer-only checks for an intentional checkout of the source repository. Installed host projects must not search for a sibling monorepo or run these commands as a fallback; connected host work should use the packaged `eaw-resource-manager` daemon described above.
 
-```bash
-pnpm run verify:m005:s04
-bash scripts/verify-m010-s05.sh
-pnpm run verify:m010:s05
-```
+For source-repository verification, maintainers should run the repository's M005 S04 and M010 S05 gates from the monorepo root after intentionally checking it out. These checks are not host instructions and are intentionally omitted from the installed skill guidance to prevent agents from discovering and executing sibling source trees.
 
-`verify:m005:s04` is the final M005 acceptance command for the connected resource-manager capture/decode path. S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately.
-
-The M010 S05 acceptance seam is the intended operator-facing check for the packaged macOS `dsview-cli` live proof plus the DSLogic support-matrix assertions. The package-specific focused checks that back the current S05 contract are:
-
-```bash
-pnpm --filter @listenai/eaw-skill-logic-analyzer exec vitest run src/generic-skill.test.ts
-pnpm --filter @listenai/eaw-resource-manager exec vitest run src/dslogic/dslogic-device-provider.test.ts
-rg -n "live-proven|readiness-modeled|dsview-cli|DSLogic Plus|macOS|Linux|Windows|verify:m010:s05" packages/skill-logic-analyzer/README.md packages/skill-logic-analyzer/SKILL.md
-```
+S04 proof level: fixture/integration acceptance for connected resource-manager capture/decode; it does not claim real DSLogic hardware capture/decode until that hardware run is completed separately. The M010 S05 acceptance seam is the intended operator-facing check for the packaged macOS `dsview-cli` live proof plus the DSLogic support-matrix assertions.

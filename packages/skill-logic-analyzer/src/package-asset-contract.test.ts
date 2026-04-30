@@ -180,12 +180,21 @@ ${packageSkill}`;
     expect(packageReadme).toContain("decodeResult.decode.annotations");
     expect(packageSkill).toContain("resource-manager owns connected capture+decode");
     expect(packageSkill).toContain("fail closed");
+    expect(packageReadme).toContain("Never search parent directories for a source checkout");
+    expect(packageReadme).toContain("eaw-resource-manager start --daemon");
+    expect(packageReadme).toContain("decode.raw.text");
+    expect(packageSkill).toContain("never discover or execute a sibling source checkout");
+    expect(packageSkill).toContain("eaw-resource-manager start --daemon");
+    expect(packageSkill).toContain("decode.raw.text");
     expect(packageSkill).toContain("offline artifact-only");
   });
 
   it("rejects direct live dsview-cli capture instructions while allowing offline decode wording", () => {
     const packageReadme = readFileSync(packageReadmePath, "utf8");
     const packageSkill = readFileSync(packageSkillPath, "utf8");
+
+    expect(packageReadme).not.toContain("../listenai_agent_skills/packages/resource-manager");
+    expect(packageSkill).not.toContain("../listenai_agent_skills/packages/resource-manager");
 
     expect(() => assertNoDirectLiveCaptureGuidance("README.md", packageReadme)).not.toThrow();
     expect(() => assertNoDirectLiveCaptureGuidance("SKILL.md", packageSkill)).not.toThrow();
